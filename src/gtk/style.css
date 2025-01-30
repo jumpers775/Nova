@@ -1,0 +1,74 @@
+.queue-box {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* Add active state styling */
+button.circular.active {
+    background-color: alpha(@accent_bg_color, 0.3);
+}
+
+/* Specific styling for the play button */
+button.play-button {
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+    min-width: 48px;
+    min-height: 48px;
+}
+
+button.play-button:hover {
+    background-color: shade(@accent_bg_color, 1.1);
+}
+
+/* Constrain volume controls height */
+#volume-scale {
+    min-height: 24px;
+}
+
+/* Adjust volume controls container alignment */
+#volume-scale,
+#mute-button,
+#queue-toggle {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* Optional: Fine-tune slider dimensions */
+#volume-scale slider {
+    min-width: 16px;
+    min-height: 16px;
+}
+
+#volume-scale trough {
+    min-height: 4px;
+}
+
+.home-button.selected {
+    background-color: alpha(@view_fg_color, 0.1);
+    color: @view_fg_color;
+}
+
+/* style.css */
+.menu-button {
+    margin-right: 6px;
+}
+
+.search-entry {
+    margin-left: 12px;
+    margin-right: 12px;
+}
+
+.control-button {
+    min-width: 36px;
+    min-height: 36px;
+}
+
+.progress-bar {
+    min-height: 4px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+togglebutton.circular:checked {
+    background-color: alpha(@accent_bg_color, 0.3);
+}

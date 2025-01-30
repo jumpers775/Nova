@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=nova
+Exec=nova
+Icon=com.lucamignatti.nova
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true

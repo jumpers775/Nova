@@ -1,0 +1,590 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $NovaWindow: $AdwApplicationWindow {
+  title: 'Nova Music Player';
+  default-width: '1200';
+  default-height: '800';
+
+  styles [
+    "main-window"
+  ]
+
+  $AdwToolbarView {
+    hexpand: 'true';
+    vexpand: 'true';
+
+    [top]
+    $AdwHeaderBar {
+      title-widget: Box {
+        orientation: horizontal;
+        spacing: 12;
+        halign: center;
+
+        Button home_button {
+          icon-name: 'user-home-symbolic';
+
+          styles [
+            "circular",
+            "home-button"
+          ]
+        }
+
+        SearchEntry header_search_entry {
+          placeholder-text: 'Search songs, artists, or albums';
+          width-request: 300;
+
+          styles [
+            "search-entry"
+          ]
+        }
+      };
+
+      [end]
+      MenuButton {
+        icon-name: 'open-menu-symbolic';
+        menu-model: primary_menu;
+
+        styles [
+          "menu-button"
+        ]
+      }
+    }
+
+    content: Box {
+      orientation: vertical;
+
+      styles [
+        "content-box"
+      ]
+
+      Box {
+        orientation: vertical;
+        vexpand: true;
+
+        $AdwFlap queue_flap {
+          flap-position: 'end';
+          fold-policy: 'auto';
+          locked: false;
+          modal: false;
+          reveal-flap: false;
+          width-request: '300';
+          swipe-to-open: true;
+          swipe-to-close: true;
+
+          content: Box {
+            orientation: horizontal;
+
+            styles [
+              "main-content"
+            ]
+
+            Box {
+              orientation: vertical;
+              width-request: 200;
+
+              styles [
+                "background",
+                "sidebar",
+                "navigation-sidebar"
+              ]
+
+              $AdwClamp {
+                maximum-size: '200';
+                tightening-threshold: '200';
+
+                ListBox sidebar_list {
+                  selection-mode: single;
+
+                  styles [
+                    "navigation-sidebar",
+                    "sidebar-list"
+                  ]
+
+                  $AdwActionRow artists_row {
+                    title: 'Artists';
+                    icon-name: 'avatar-default-symbolic';
+                    activatable: true;
+
+                    styles [
+                      "sidebar-row"
+                    ]
+                  }
+
+                  $AdwActionRow albums_row {
+                    title: 'Albums';
+                    icon-name: 'media-optical-symbolic';
+                    activatable: true;
+
+                    styles [
+                      "sidebar-row"
+                    ]
+                  }
+
+                  $AdwActionRow playlists_row {
+                    title: 'Playlists';
+                    icon-name: 'view-list-symbolic';
+                    activatable: true;
+
+                    styles [
+                      "sidebar-row"
+                    ]
+                  }
+
+                  $AdwActionRow liked_row {
+                    title: 'Liked';
+                    icon-name: 'emblem-favorite-symbolic';
+                    activatable: true;
+
+                    styles [
+                      "sidebar-row"
+                    ]
+                  }
+                }
+              }
+            }
+
+            Box {
+              orientation: vertical;
+              hexpand: true;
+
+              styles [
+                "main-view"
+              ]
+
+              $AdwViewStack main_stack {
+                $AdwViewStackPage {
+                  name: 'home';
+                  title: 'Home';
+
+                  child: ScrolledWindow {
+                    vexpand: true;
+
+                    Box {
+                      orientation: vertical;
+                      spacing: 24;
+                      margin-start: 24;
+                      margin-end: 24;
+                      margin-top: 24;
+                      margin-bottom: 24;
+
+                      styles [
+                        "home-page"
+                      ]
+
+                      Box {
+                        orientation: vertical;
+                        spacing: 12;
+
+                        Label {
+                          label: 'Recently Played';
+                          xalign: 0;
+
+                          styles [
+                            "title-2",
+                            "section-title"
+                          ]
+                        }
+
+                        FlowBox recent_grid {
+                          selection-mode: none;
+                          homogeneous: true;
+                          max-children-per-line: 6;
+                          min-children-per-line: 2;
+
+                          styles [
+                            "content-grid"
+                          ]
+                        }
+                      }
+
+                      Box {
+                        orientation: vertical;
+                        spacing: 12;
+
+                        Label {
+                          label: 'Made For You';
+                          xalign: 0;
+
+                          styles [
+                            "title-2",
+                            "section-title"
+                          ]
+                        }
+
+                        FlowBox recommendations_grid {
+                          selection-mode: none;
+                          homogeneous: true;
+                          max-children-per-line: 6;
+                          min-children-per-line: 2;
+
+                          styles [
+                            "content-grid"
+                          ]
+                        }
+                      }
+                    }
+                  };
+                }
+
+                $AdwViewStackPage {
+                  name: 'search';
+                  title: 'Search';
+
+                  child: $AdwStatusPage {
+                    title: 'Search Results';
+                    description: 'Search results will appear here';
+                    icon-name: 'system-search-symbolic';
+
+                    styles [
+                      "status-page"
+                    ]
+                  };
+                }
+
+                $AdwViewStackPage {
+                  name: 'artists';
+                  title: 'Artists';
+
+                  child: $AdwStatusPage {
+                    title: 'Artists';
+                    description: 'Your artists will appear here';
+
+                    styles [
+                      "status-page"
+                    ]
+                  };
+                }
+
+                $AdwViewStackPage {
+                  name: 'albums';
+                  title: 'Albums';
+
+                  child: $AdwStatusPage {
+                    title: 'Albums';
+                    description: 'Your albums will appear here';
+
+                    styles [
+                      "status-page"
+                    ]
+                  };
+                }
+
+                $AdwViewStackPage {
+                  name: 'playlists';
+                  title: 'Playlists';
+
+                  child: $AdwStatusPage {
+                    title: 'Your Playlists';
+                    description: 'Your playlists will appear here';
+
+                    styles [
+                      "status-page"
+                    ]
+                  };
+                }
+
+                $AdwViewStackPage {
+                  name: 'liked';
+                  title: 'Liked';
+
+                  child: $AdwStatusPage {
+                    title: 'Liked Songs';
+                    description: 'Your liked songs will appear here';
+
+                    styles [
+                      "status-page"
+                    ]
+                  };
+                }
+              }
+            }
+          };
+
+          flap: Box {
+            orientation: vertical;
+            width-request: 250;
+
+            styles [
+              "background",
+              "sidebar",
+              "flat-corners",
+              "queue-flap"
+            ]
+
+            Box {
+              orientation: vertical;
+              spacing: 12;
+              margin-top: 12;
+              margin-start: 12;
+              margin-end: 12;
+            }
+
+            ScrolledWindow {
+              vexpand: true;
+
+              ListBox queue_list {
+                selection-mode: none;
+
+                styles [
+                  "navigation-sidebar",
+                  "content",
+                  "queue-box",
+                  "queue-list"
+                ]
+
+                Label {
+                  label: 'Now Playing';
+                  xalign: 0.5;
+
+                  styles [
+                    "title-2",
+                    "queue-title"
+                  ]
+                }
+              }
+            }
+          };
+        }
+      }
+
+      Box playback_controls {
+        orientation: horizontal;
+        margin-start: 12;
+        margin-end: 12;
+        margin-top: 6;
+        margin-bottom: 6;
+        spacing: 12;
+
+        styles [
+          "toolbar",
+          "background",
+          "playback-controls"
+        ]
+
+        Box {
+          spacing: 12;
+          valign: center;
+
+          styles [
+            "now-playing"
+          ]
+
+          Image current_album_art {
+            pixel-size: 48;
+
+            styles [
+              "album-art"
+            ]
+          }
+
+          Box {
+            orientation: vertical;
+            valign: center;
+            spacing: 2;
+
+            Label current_song {
+              label: 'No song playing';
+              xalign: 0;
+
+              styles [
+                "heading",
+                "song-title"
+              ]
+            }
+
+            Label current_song_artist {
+              label: '';
+              xalign: 0;
+
+              styles [
+                "caption",
+                "song-artist"
+              ]
+            }
+          }
+        }
+
+        Box {
+          orientation: vertical;
+          valign: center;
+          spacing: 4;
+
+          styles [
+            "playback-buttons"
+          ]
+
+          Box {
+            spacing: 6;
+            halign: center;
+
+            ToggleButton shuffle_button {
+              icon-name: 'media-playlist-shuffle-symbolic';
+
+              styles [
+                "circular",
+                "control-button"
+              ]
+            }
+
+            Button prev_button {
+              icon-name: 'media-skip-backward-symbolic';
+
+              styles [
+                "circular",
+                "control-button"
+              ]
+            }
+
+            Button play_button {
+              icon-name: 'media-playback-start-symbolic';
+
+              styles [
+                "circular",
+                "suggested-action",
+                "play-button"
+              ]
+            }
+
+            Button next_button {
+              icon-name: 'media-skip-forward-symbolic';
+
+              styles [
+                "circular",
+                "control-button"
+              ]
+            }
+
+            ToggleButton loop_button {
+              icon-name: 'media-playlist-repeat-symbolic';
+
+              styles [
+                "circular",
+                "control-button"
+              ]
+            }
+          }
+
+          Box {
+            margin-start: 6;
+            margin-end: 6;
+            spacing: 6;
+            halign: center;
+            width-request: 500;
+
+            styles [
+              "progress-area"
+            ]
+
+            Label current_time_label {
+              label: '0:00';
+
+              styles [
+                "numeric",
+                "caption",
+                "time-label"
+              ]
+            }
+
+            Scale song_progress_bar {
+              hexpand: true;
+              draw-value: false;
+
+              adjustment: Adjustment {
+                lower: 0;
+                upper: 100;
+                step-increment: 1;
+              };
+
+              styles [
+                "progress-bar"
+              ]
+            }
+
+            Label total_time_label {
+              label: '0:00';
+
+              styles [
+                "numeric",
+                "caption",
+                "time-label"
+              ]
+            }
+          }
+        }
+
+        Box {
+          spacing: 6;
+          valign: center;
+
+          styles [
+            "volume-controls"
+          ]
+
+          Button mute_button {
+            icon-name: 'audio-volume-muted-symbolic';
+
+            styles [
+              "circular",
+              "volume-button"
+            ]
+          }
+
+          Scale volume_scale {
+            orientation: horizontal;
+
+            adjustment: Adjustment {
+              lower: 0;
+              upper: 100;
+              step-increment: 1;
+              page-increment: 10;
+            };
+
+            draw-value: false;
+            width-request: 100;
+            hexpand: false;
+            valign: center;
+            margin-top: 2;
+            margin-bottom: 2;
+
+            styles [
+              "volume-slider"
+            ]
+          }
+
+          ToggleButton queue_toggle {
+            icon-name: 'view-list-symbolic';
+            tooltip-text: 'Show Queue';
+            active: false;
+
+            styles [
+              "circular",
+              "queue-button"
+            ]
+          }
+        }
+      }
+    };
+  }
+}
+
+menu primary_menu {
+  section {
+    item {
+      label: _('_Preferences');
+      action: 'app.preferences';
+      accelerator: '<primary>comma';
+    }
+
+    item {
+      label: _('_About Nova');
+      action: 'app.about';
+    }
+
+    item {
+      label: _('_Quit');
+      action: 'app.quit';
+      accelerator: '<primary>q';
+    }
+  }
+}
