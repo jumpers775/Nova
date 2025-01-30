@@ -18,6 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 use adw::subclass::prelude::*;
+use chrono::{DateTime, Utc};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::RefCell;
@@ -25,6 +26,10 @@ use std::rc::Rc;
 
 mod imp {
     use super::*;
+    use crate::services::{LocalMusicProvider, ServiceManager};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio::runtime::Runtime;
 
     #[derive(Debug, Default, gtk::CompositeTemplate)]
     #[template(resource = "/com/lucamignatti/nova/window.ui")]
@@ -74,6 +79,7 @@ mod imp {
         pub total_time_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub sidebar_list: TemplateChild<gtk::ListBox>,
+        pub service_manager: RefCell<Option<Arc<ServiceManager>>>,
     }
 
     #[glib::object_subclass]
@@ -94,6 +100,42 @@ mod imp {
     impl ObjectImpl for NovaWindow {
         fn constructed(&self) {
             self.parent_constructed();
+
+            let manager = ServiceManager::new();
+
+            let music_dir = dirs::audio_dir().unwrap_or_else(|| {
+                PathBuf::from(&format!("{}/Music", std::env::var("HOME").unwrap()))
+            });
+            let local_provider = Box::new(LocalMusicProvider::new(music_dir));
+
+            let manager = Arc::new(manager);
+            let manager_clone = manager.clone();
+
+            gtk::glib::spawn_future_local(async move {
+                manager_clone
+                    .register_provider("local", local_provider)
+                    .await;
+            });
+
+            self.service_manager.replace(Some(manager));
+
+            if let Some(manager) = self.service_manager.borrow().as_ref() {
+                let manager_clone = manager.clone();
+                gtk::glib::spawn_future_local(async move {
+                    match manager_clone.get_all_tracks().await {
+                        Ok(tracks) => {
+                            println!("Number of tracks found: {}", tracks.len());
+                            for track in tracks.into_iter() {
+                                println!(
+                                    "Track: {} by {} (from {})",
+                                    track.track.title, track.track.artist, track.provider
+                                );
+                            }
+                        }
+                        Err(e) => println!("Error getting tracks: {:?}", e),
+                    }
+                });
+            }
 
             // Set queue flap hidden by default
             self.queue_flap.set_reveal_flap(false);
@@ -270,6 +312,28 @@ mod imp {
                 };
                 println!("Loop state is now: {:?}", state);
             });
+
+            // Initialize ServiceManager
+            let manager = ServiceManager::new();
+
+            // Create and register local provider
+            let music_dir =
+                dirs::audio_dir().unwrap_or_else(|| PathBuf::from("/var/home/luca/Music"));
+            let local_provider = Box::new(LocalMusicProvider::new(music_dir));
+
+            // Store manager in RefCell
+            let manager = Arc::new(manager);
+            let manager_clone = manager.clone();
+
+            // Use tokio to register providers
+            let rt = Runtime::new().unwrap();
+            rt.spawn(async move {
+                manager_clone
+                    .register_provider("local", local_provider)
+                    .await;
+            });
+
+            self.service_manager.replace(Some(manager));
         }
     }
     impl WidgetImpl for NovaWindow {}

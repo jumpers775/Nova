@@ -20,6 +20,7 @@
 
 mod application;
 mod config;
+mod services;
 mod window;
 
 use self::application::NovaApplication;
