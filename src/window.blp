@@ -62,97 +62,93 @@ template $NovaWindow: $AdwApplicationWindow {
         orientation: vertical;
         vexpand: true;
 
-        $AdwFlap queue_flap {
-          flap-position: 'end';
-          fold-policy: 'auto';
-          locked: false;
-          modal: false;
-          reveal-flap: false;
-          width-request: '300';
-          swipe-to-open: true;
-          swipe-to-close: true;
+        Box {
+          orientation: horizontal;
 
-          content: Box {
-            orientation: horizontal;
+          Box {
+            orientation: vertical;
+            width-request: 200;
 
             styles [
-              "main-content"
+              "background",
+              "sidebar",
+              "navigation-sidebar"
             ]
 
-            Box {
-              orientation: vertical;
-              width-request: 200;
+            $AdwClamp {
+              maximum-size: '200';
+              tightening-threshold: '200';
 
-              styles [
-                "background",
-                "sidebar",
-                "navigation-sidebar"
-              ]
+              ListBox sidebar_list {
+                selection-mode: single;
 
-              $AdwClamp {
-                maximum-size: '200';
-                tightening-threshold: '200';
+                styles [
+                  "navigation-sidebar",
+                  "sidebar-list"
+                ]
 
-                ListBox sidebar_list {
-                  selection-mode: single;
+                $AdwActionRow artists_row {
+                  title: 'Artists';
+                  icon-name: 'avatar-default-symbolic';
+                  activatable: true;
 
                   styles [
-                    "navigation-sidebar",
-                    "sidebar-list"
+                    "sidebar-row"
                   ]
+                }
 
-                  $AdwActionRow artists_row {
-                    title: 'Artists';
-                    icon-name: 'avatar-default-symbolic';
-                    activatable: true;
+                $AdwActionRow albums_row {
+                  title: 'Albums';
+                  icon-name: 'media-optical-symbolic';
+                  activatable: true;
 
-                    styles [
-                      "sidebar-row"
-                    ]
-                  }
+                  styles [
+                    "sidebar-row"
+                  ]
+                }
 
-                  $AdwActionRow albums_row {
-                    title: 'Albums';
-                    icon-name: 'media-optical-symbolic';
-                    activatable: true;
+                $AdwActionRow playlists_row {
+                  title: 'Playlists';
+                  icon-name: 'view-list-symbolic';
+                  activatable: true;
 
-                    styles [
-                      "sidebar-row"
-                    ]
-                  }
+                  styles [
+                    "sidebar-row"
+                  ]
+                }
 
-                  $AdwActionRow playlists_row {
-                    title: 'Playlists';
-                    icon-name: 'view-list-symbolic';
-                    activatable: true;
+                $AdwActionRow liked_row {
+                  title: 'Liked';
+                  icon-name: 'emblem-favorite-symbolic';
+                  activatable: true;
 
-                    styles [
-                      "sidebar-row"
-                    ]
-                  }
-
-                  $AdwActionRow liked_row {
-                    title: 'Liked';
-                    icon-name: 'emblem-favorite-symbolic';
-                    activatable: true;
-
-                    styles [
-                      "sidebar-row"
-                    ]
-                  }
+                  styles [
+                    "sidebar-row"
+                  ]
                 }
               }
             }
+          }
 
-            Box {
+          $AdwOverlaySplitView nav_split {
+            hexpand: true;
+            vexpand: true;
+            collapsed: true;
+            sidebar-position: end;
+            enable-show-gesture: true;
+            enable-hide-gesture: true;
+
+            content: Box {
               orientation: vertical;
               hexpand: true;
+              vexpand: true;
 
               styles [
                 "main-view"
               ]
 
               $AdwViewStack main_stack {
+                vexpand: true;
                 $AdwViewStackPage {
                   name: 'home';
                   title: 'Home';
@@ -298,40 +294,26 @@ template $NovaWindow: $AdwApplicationWindow {
                   };
                 }
               }
-            }
-          };
+            };
 
-          flap: Box {
-            orientation: vertical;
-            width-request: 250;
+            sidebar: ScrolledWindow {
+              width-request: 300;
 
-            styles [
-              "background",
-              "sidebar",
-              "flat-corners",
-              "queue-flap"
-            ]
+              styles [
+                "queue-sidebar"
+              ]
 
-            Box {
-              orientation: vertical;
-              spacing: 12;
-              margin-top: 12;
-              margin-start: 12;
-              margin-end: 12;
-            }
-
-            ScrolledWindow {
-              vexpand: true;
-
-              ListBox queue_list {
-                selection-mode: none;
+              Box {
+                orientation: vertical;
+                margin-start: 12;
+                margin-end: 12;
+                margin-top: 12;
+                margin-bottom: 12;
 
                 styles [
-                  "navigation-sidebar",
-                  "content",
-                  "queue-box",
-                  "queue-list"
+                  "navigation-sidebar"
                 ]
+
 
                 Label {
                   label: 'Now Playing';
@@ -342,9 +324,20 @@ template $NovaWindow: $AdwApplicationWindow {
                     "queue-title"
                   ]
                 }
+
+                ListBox queue_list {
+                  selection-mode: none;
+
+                  styles [
+                    "navigation-sidebar",
+                    "content",
+                    "queue-box"
+                  ]
+
+                }
               }
-            }
-          };
+            };
+          }
         }
       }
 

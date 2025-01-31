@@ -1,9 +1,51 @@
-.queue-box {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
+.navigation-sidebar {
+    background-color: @window_bg_color;
 }
 
-/* Add active state styling */
+.queue-sidebar {
+    background-color: @window_bg_color;
+    transition: margin 250ms ease-in-out;
+}
+
+.slide-animation {
+    /* The default, visible state */
+    transform: translateX(0);
+    transition: transform 0.3s ease; /* 300 ms slide */
+}
+
+.slide-animation.hidden {
+    transform: translateX(100%);
+}
+.queue-sidebar.collapsed {
+    margin-end: -300px; /* match sidebar width */
+}
+
+.queue-box {
+    background-color: @headerbar_bg_color;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+.queue-box:last-child {
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+
+.queue-title {
+    background-color: @headerbar_bg_color;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    box-shadow:
+        0 -2px 4px rgba(0, 0, 0, 0.1),
+        2px 0 4px rgba(0, 0, 0, 0.1),
+        -2px 0 4px rgba(0, 0, 0, 0.1);
+    padding-top: 6px;
+}
+
+.queue-box.rounded:backdrop {
+    background-color: @window_bg_color;
+}
+
 button.circular.active {
     background-color: alpha(@accent_bg_color, 0.3);
 }

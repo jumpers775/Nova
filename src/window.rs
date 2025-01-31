@@ -40,7 +40,7 @@ mod imp {
         #[template_child]
         pub header_search_entry: TemplateChild<gtk::SearchEntry>,
         #[template_child]
-        pub queue_flap: TemplateChild<adw::Flap>,
+        pub nav_split: TemplateChild<adw::OverlaySplitView>,
         #[template_child]
         pub main_stack: TemplateChild<adw::ViewStack>,
         #[template_child]
@@ -80,6 +80,8 @@ mod imp {
         #[template_child]
         pub sidebar_list: TemplateChild<gtk::ListBox>,
         pub service_manager: RefCell<Option<Arc<ServiceManager>>>,
+        #[template_child]
+        pub queue_list: TemplateChild<gtk::ListBox>,
     }
 
     #[glib::object_subclass]
@@ -127,8 +129,11 @@ mod imp {
                             println!("Number of tracks found: {}", tracks.len());
                             for track in tracks.into_iter() {
                                 println!(
-                                    "Track: {} by {} (from {})",
-                                    track.track.title, track.track.artist, track.provider
+                                    "Track: {} by {} in {} (from {})",
+                                    track.track.title,
+                                    track.track.artist,
+                                    track.track.album,
+                                    track.provider
                                 );
                             }
                         }
@@ -137,8 +142,18 @@ mod imp {
                 });
             }
 
-            // Set queue flap hidden by default
-            self.queue_flap.set_reveal_flap(false);
+            // Set initial selection state
+            let sidebar_list = self.sidebar_list.clone();
+            let home_button = self.home_button.clone();
+
+            // Use a small delay to let the UI initialize
+            glib::idle_add_local_once(move || {
+                // Clear any potential initial selections
+                sidebar_list.unselect_all();
+
+                // Set home as active
+                home_button.add_css_class("selected");
+            });
 
             // Initialize volume
             self.volume_scale.set_value(100.0);
@@ -175,9 +190,9 @@ mod imp {
             });
 
             // Queue toggle
-            let queue_flap = self.queue_flap.clone();
+            let nav_split = self.nav_split.clone();
             self.queue_toggle.connect_toggled(move |button| {
-                queue_flap.set_reveal_flap(button.is_active());
+                nav_split.set_collapsed(!button.is_active());
                 println!("Queue toggle: {}", button.is_active());
             });
 
