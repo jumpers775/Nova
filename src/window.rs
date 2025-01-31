@@ -20,7 +20,7 @@
 use adw::subclass::prelude::*;
 use chrono::{DateTime, Utc};
 use gtk::prelude::*;
-use gtk::{gio, glib};
+use gtk::{gio, glib, Revealer};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -82,6 +82,8 @@ mod imp {
         pub service_manager: RefCell<Option<Arc<ServiceManager>>>,
         #[template_child]
         pub queue_list: TemplateChild<gtk::ListBox>,
+        #[template_child]
+        pub sidebar_revealer: TemplateChild<gtk::Revealer>,
     }
 
     #[glib::object_subclass]
@@ -189,11 +191,14 @@ mod imp {
                 println!("Navigated to {}", page_name);
             });
 
-            // Queue toggle
+            // Queue toggle with revealer
             let nav_split = self.nav_split.clone();
+            let sidebar_revealer = self.sidebar_revealer.clone();
             self.queue_toggle.connect_toggled(move |button| {
-                nav_split.set_collapsed(!button.is_active());
-                println!("Queue toggle: {}", button.is_active());
+                let is_active = button.is_active();
+                nav_split.set_collapsed(false);
+                sidebar_revealer.set_reveal_child(is_active);
+                println!("Queue toggle: {}", is_active);
             });
 
             // Volume control state

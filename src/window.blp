@@ -296,44 +296,50 @@ template $NovaWindow: $AdwApplicationWindow {
               }
             };
 
-            sidebar: ScrolledWindow {
+            sidebar: Revealer sidebar_revealer {
+              transition-type: slide_left;
+              transition-duration: 250;
+              reveal-child: false;
               width-request: 300;
+              halign: fill;
 
-              styles [
-                "queue-sidebar"
-              ]
-
-              Box {
-                orientation: vertical;
-                margin-start: 12;
-                margin-end: 12;
-                margin-top: 12;
-                margin-bottom: 12;
-
+              child: ScrolledWindow {
+                halign: fill;
+                hexpand: true;
                 styles [
-                  "navigation-sidebar"
+                  "queue-sidebar"
                 ]
 
-
-                Label {
-                  label: 'Now Playing';
-                  xalign: 0.5;
-
-                  styles [
-                    "title-2",
-                    "queue-title"
-                  ]
-                }
-
-                ListBox queue_list {
-                  selection-mode: none;
+                Box {
+                  orientation: vertical;
+                  halign: fill;
+                  hexpand: true;
+                  spacing: 12;
 
                   styles [
-                    "navigation-sidebar",
-                    "content",
-                    "queue-box"
+                    "navigation-sidebar"
                   ]
 
+                  Label {
+                    label: 'Now Playing';
+                    xalign: 0.5;
+
+                    styles [
+                      "title-2",
+                      "queue-title"
+                    ]
+                  }
+
+                  ListBox queue_list {
+                    selection-mode: none;
+                    hexpand: true;
+
+                    styles [
+                      "navigation-sidebar",
+                      "content",
+                      "queue-box"
+                    ]
+                  }
                 }
               }
             };
