@@ -21,7 +21,7 @@ use crate::services::models::{Artwork, ArtworkSource, Track};
 use adw::subclass::prelude::*;
 use chrono::{DateTime, Utc};
 use gdk_pixbuf::Pixbuf;
-use glib::clone;
+use glib::{clone, Propagation};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::RefCell;
@@ -124,6 +124,53 @@ mod imp {
     impl ObjectImpl for NovaWindow {
         fn constructed(&self) {
             self.parent_constructed();
+
+            // Add scroll controller to search results
+            let scroll_controller =
+                gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+            scroll_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+
+            let search_results_scroll = self.search_results_scroll.clone();
+            scroll_controller.connect_scroll(move |_, _, dy| {
+                let adj = search_results_scroll.vadjustment();
+                let increment = dy * adj.step_increment() * 3.0; // Multiply by 3 for faster scrolling
+                let new_value = adj.value() + increment;
+                adj.set_value(new_value.clamp(adj.lower(), adj.upper() - adj.page_size()));
+                Propagation::Stop
+            });
+
+            self.search_results_box.add_controller(scroll_controller);
+
+            // Get a clone of the ScrolledWindow for the closure.
+            let search_results_scroll = self.search_results_scroll.clone();
+
+            // Create a function to add scroll controllers
+            fn create_scroll_controller(
+                search_results_scroll: &gtk::ScrolledWindow,
+            ) -> gtk::EventControllerScroll {
+                let scroll_window = search_results_scroll.clone();
+                let controller =
+                    gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+                controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+                controller.connect_scroll(move |_controller, _dx, dy| {
+                    let adj = scroll_window.vadjustment();
+                    let new_value = adj.value() + (dy * adj.step_increment());
+                    adj.set_value(new_value.clamp(adj.lower(), adj.upper() - adj.page_size()));
+                    Propagation::Stop
+                });
+                controller
+            }
+
+            // Attach controllers to result boxes
+            for widget in [
+                &*self.top_result_box,
+                &*self.tracks_box,
+                &*self.artists_box,
+                &*self.albums_box,
+            ] {
+                let controller = create_scroll_controller(&search_results_scroll);
+                widget.add_controller(controller);
+            }
 
             let manager = ServiceManager::new();
 
