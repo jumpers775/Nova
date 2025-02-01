@@ -228,11 +228,110 @@ template $NovaWindow: $AdwApplicationWindow {
                 $AdwViewStackPage {
                     name: 'search';
                     title: 'Search';
-                    child: ScrolledWindow {
-                        child: Box search_results_box{
-                            orientation: vertical;
-                            spacing: 12;
-                        };
+                    child: Stack search_stack {
+                        [child]
+                        ScrolledWindow search_results_scroll {
+                            child: Box search_results_box {
+                                orientation: vertical;
+                                spacing: 12;
+                                margin-start: 12;
+                                margin-end: 12;
+                                margin-top: 12;
+                                margin-bottom: 12;
+
+                                Box top_section {
+                                    orientation: horizontal;
+                                    spacing: 12;
+
+                                    // Left side: Top Result
+                                    Box {
+                                        orientation: vertical;
+                                        spacing: 6;
+                                        hexpand: true;
+
+                                        Label {
+                                            label: 'Top Result';
+                                            halign: start;
+                                            styles ["search_heading"]
+                                        }
+
+                                        Box top_result_box {
+                                            orientation: vertical;
+                                            styles ["card"]
+                                        }
+                                    }
+
+                                    // Right side: Top Tracks
+                                    Box {
+                                        orientation: vertical;
+                                        spacing: 6;
+                                        hexpand: true;
+
+                                        Label {
+                                            label: 'Songs';
+                                            halign: start;
+                                            styles ["search_heading"]
+                                        }
+
+                                        Box tracks_box {
+                                            orientation: vertical;
+                                            styles ["card"]
+                                        }
+                                    }
+                                }
+
+                                // Artists Section
+                                Label {
+                                    label: 'Artists';
+                                    halign: start;
+                                    margin-top: 12;
+                                    styles ["search_heading"]
+                                }
+
+                                ScrolledWindow artists_scroll {
+                                    hscrollbar-policy: external;
+                                    vscrollbar-policy: never;
+                                    styles ["scroll-container"]
+
+                                    Box artists_box {
+                                        orientation: horizontal;
+                                        spacing: 12;
+                                        margin-top: 6;
+                                        styles ["results-card"]
+                                    }
+                                }
+                                Label {
+                                    label: 'Albums';
+                                    halign: start;
+                                    margin-top: 12;
+                                    styles ["search_heading"]
+                                }
+
+                                // Albums Section
+                                ScrolledWindow albums_scroll {
+                                    hscrollbar-policy: external;
+                                    vscrollbar-policy: never;
+                                    styles ["scroll-container"]
+
+                                    Box albums_box {
+                                        orientation: horizontal;
+                                        spacing: 12;
+                                        margin-top: 6;
+                                        styles ["results-card"]
+                                    }
+                                }
+                            };
+                        }
+
+                        $AdwStatusPage empty_search_page {
+                         name: "empty_search_page";
+                         title: 'Search Nova';
+                         description: 'Search for artists, songs, or albums';
+                         icon-name: 'system-search-symbolic';
+                         styles [
+                          "compact"
+                         ]
+                        }
                     };
                 }
 
@@ -370,7 +469,8 @@ template $NovaWindow: $AdwApplicationWindow {
             pixel-size: 48;
 
             styles [
-              "album-art"
+              "album-art",
+              "current_album_art"
             ]
           }
 

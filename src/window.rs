@@ -25,6 +25,7 @@ use glib::clone;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 mod imp {
@@ -85,10 +86,24 @@ mod imp {
         pub service_manager: RefCell<Option<Arc<ServiceManager>>>,
         #[template_child]
         pub queue_list: TemplateChild<gtk::ListBox>,
-        #[template_child(id = "search_results_box")]
+        #[template_child]
+        pub search_stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub empty_search_page: TemplateChild<adw::StatusPage>,
+        #[template_child]
+        pub search_results_scroll: TemplateChild<gtk::ScrolledWindow>,
+        #[template_child]
         pub search_results_box: TemplateChild<gtk::Box>,
         #[template_child]
         pub current_song_artist: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub top_result_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub tracks_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub artists_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub albums_box: TemplateChild<gtk::Box>,
     }
 
     #[glib::object_subclass]
@@ -128,180 +143,146 @@ mod imp {
 
             self.service_manager.replace(Some(manager));
 
+            // Set up initial state of search stack
+            self.search_stack
+                .add_named(&self.empty_search_page.get(), Some("empty_search_page"));
+            self.search_stack.add_named(
+                &self.search_results_scroll.get(),
+                Some("search_results_scroll"),
+            );
+            self.search_stack
+                .set_visible_child_name("empty_search_page");
+
             // Connect search entry focus and text change signals
             let search_entry = self.header_search_entry.clone();
             let main_stack = self.main_stack.clone();
             let sidebar_list = self.sidebar_list.clone();
             let home_button = self.home_button.clone();
-            let search_results_box = self.search_results_box.clone();
+            let search_stack = self.search_stack.clone();
 
             // When search entry gains focus using an EventControllerFocus
             let focus_controller = gtk::EventControllerFocus::new();
-            focus_controller.connect_enter(clone!(@strong main_stack, @strong home_button, @strong sidebar_list => move |_controller| {
+            focus_controller.connect_enter(clone!(@strong main_stack, @strong home_button, @strong sidebar_list, @strong search_stack => move |_controller| {
                 main_stack.set_visible_child_name("search");
                 home_button.remove_css_class("selected");
                 sidebar_list.unselect_all();
+                search_stack.set_visible_child_name("empty_search_page");
             }));
             search_entry.add_controller(focus_controller);
 
             // When search text changes
             let service_manager = self.service_manager.clone();
-            let search_results_box = self.search_results_box.clone();
-            let current_song = self.current_song.clone();
-            let current_song_artist = self.current_song_artist.clone();
-            let current_album_art = self.current_album_art.clone();
+            let top_result_box = self.top_result_box.clone();
+            let tracks_box = self.tracks_box.clone();
+            let artists_box = self.artists_box.clone();
+            let albums_box = self.albums_box.clone();
+            let search_stack = self.search_stack.clone();
 
             self.header_search_entry.connect_changed(move |entry| {
                 let query = entry.text().to_string();
 
-                // Clear previous results using a while loop over first_child
-                while let Some(child) = search_results_box.first_child() {
-                    search_results_box.remove(&child);
+                // Clear previous results
+                while let Some(child) = top_result_box.first_child() {
+                    top_result_box.remove(&child);
+                }
+                while let Some(child) = tracks_box.first_child() {
+                    tracks_box.remove(&child);
+                }
+                while let Some(child) = artists_box.first_child() {
+                    artists_box.remove(&child);
+                }
+                while let Some(child) = albums_box.first_child() {
+                    albums_box.remove(&child);
                 }
 
                 if query.is_empty() {
+                    search_stack.set_visible_child_name("empty_search_page");
                     return;
+                }
+
+                search_stack.set_visible_child_name("search_results_scroll");
+
+                // Add placeholders initially
+                let top_placeholder = gtk::Image::from_icon_name("audio-x-generic-symbolic");
+                top_placeholder.set_size_request(96, 96);
+                top_placeholder.add_css_class("album-art");
+                top_result_box.append(&top_placeholder);
+
+                // Track placeholders
+                for _ in 0..3 {
+                    let track_placeholder = gtk::Image::from_icon_name("audio-x-generic-symbolic");
+                    track_placeholder.set_size_request(48, 48);
+                    track_placeholder.add_css_class("album-art");
+                    tracks_box.append(&track_placeholder);
+                }
+
+                // Artist placeholders
+                for _ in 0..4 {
+                    let artist_placeholder = gtk::Image::from_icon_name("avatar-default-symbolic");
+                    artist_placeholder.set_size_request(150, 150);
+                    artist_placeholder.add_css_class("album-art");
+                    artist_placeholder.add_css_class("artist-image");
+                    artists_box.append(&artist_placeholder);
+                }
+
+                // Album placeholders
+                for _ in 0..4 {
+                    let album_placeholder = gtk::Image::from_icon_name("audio-x-generic-symbolic");
+                    album_placeholder.set_size_request(150, 150);
+                    album_placeholder.add_css_class("album-art");
+                    albums_box.append(&album_placeholder);
                 }
 
                 if let Some(manager) = service_manager.borrow().as_ref() {
                     let manager_clone = manager.clone();
-                    let current_song = current_song.clone();
-                    let current_song_artist = current_song_artist.clone();
-                    let current_album_art = current_album_art.clone();
-
-                    gtk::glib::spawn_future_local(clone!(@strong search_results_box => async move {
+                    gtk::glib::spawn_future_local(clone!(@strong top_result_box, @strong tracks_box, @strong artists_box, @strong albums_box => async move {
                         match manager_clone.search_all(&query).await {
                             Ok(tracks) => {
+                                // Clear placeholders
+                                while let Some(child) = top_result_box.first_child() {
+                                    top_result_box.remove(&child);
+                                }
+                                while let Some(child) = tracks_box.first_child() {
+                                    tracks_box.remove(&child);
+                                }
+                                while let Some(child) = artists_box.first_child() {
+                                    artists_box.remove(&child);
+                                }
+                                while let Some(child) = albums_box.first_child() {
+                                    albums_box.remove(&child);
+                                }
+
+                                let mut artists = HashMap::new();
+                                let mut albums = HashMap::new();
+
+                                // Process tracks
                                 for (i, track) in tracks.iter().enumerate() {
-                                    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-
-                                    // Album art handling
-                                    let art = match &track.track.artwork {
-                                        Artwork { thumbnail: Some(data), .. } => {
-                                            let bytes = glib::Bytes::from(data);
-                                            let stream = gio::MemoryInputStream::from_bytes(&bytes);
-                                            if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
-                                                let size = if i == 0 { 96 } else { 48 };
-                                                if let Some(scaled) = pixbuf.scale_simple(size, size, gdk_pixbuf::InterpType::Bilinear) {
-                                                    let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
-                                                    let img = gtk::Image::from_paintable(Some(&paintable));
-                                                    img.add_css_class("album-art");
-                                                    img.add_css_class("rounded");
-                                                    img.set_size_request(size, size);
-                                                    img
-                                                } else {
-                                                    let img = gtk::Image::from_icon_name("audio-x-generic-symbolic");
-                                                    img.add_css_class("album-art");
-                                                    img.add_css_class("rounded");
-                                                    img
-                                                }
-                                            } else {
-                                                let img = gtk::Image::from_icon_name("audio-x-generic-symbolic");
-                                                img.add_css_class("album-art");
-                                                img.add_css_class("rounded");
-                                                img
-                                            }
-                                        },
-                                        Artwork { full_art: ArtworkSource::Local { path }, .. } => {
-                                            if let Ok(pixbuf) = Pixbuf::from_file(path) {
-                                                let size = if i == 0 { 96 } else { 48 };
-                                                if let Some(scaled) = pixbuf.scale_simple(size, size, gdk_pixbuf::InterpType::Bilinear) {
-                                                    let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
-                                                    let img = gtk::Image::from_paintable(Some(&paintable));
-                                                    img.add_css_class("album-art");
-                                                    img.add_css_class("rounded");
-                                                    img.set_size_request(size, size);
-                                                    img
-                                                } else {
-                                                    let img = gtk::Image::from_icon_name("audio-x-generic-symbolic");
-                                                    img.add_css_class("album-art");
-                                                    img.add_css_class("rounded");
-                                                    img
-                                                }
-                                            } else {
-                                                let img = gtk::Image::from_icon_name("audio-x-generic-symbolic");
-                                                img.add_css_class("album-art");
-                                                img.add_css_class("rounded");
-                                                img
-                                            }
-                                        },
-                                        _ => {
-                                            let img = gtk::Image::from_icon_name("audio-x-generic-symbolic");
-                                            img.add_css_class("album-art");
-                                            img.add_css_class("rounded");
-                                            img
-                                        },
-                                    };
-
                                     if i == 0 {
-                                        row.add_css_class("large-suggestion");
-                                    } else {
-                                        row.add_css_class("small-suggestion");
+                                        let card = create_track_card(&track.track, true);
+                                        top_result_box.append(&card);
+                                    }
+                                    else if i <= 5 {
+                                        let card = create_track_card(&track.track, false);
+                                        tracks_box.append(&card);
                                     }
 
-                                    row.append(&art);
+                                    artists.entry(track.track.artist.clone())
+                                        .or_insert_with(|| track.track.artwork.clone());
 
-                                    // Text box for title and artist
-                                    let text_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
-                                    text_box.set_margin_start(12);
+                                    albums.entry((track.track.album.clone(), track.track.artist.clone()))
+                                        .or_insert_with(|| track.track.artwork.clone());
+                                }
 
-                                    let title = gtk::Label::new(Some(&track.track.title));
-                                    title.set_halign(gtk::Align::Start);
-                                    if i == 0 {
-                                        title.add_css_class("title-1");
-                                    } else {
-                                        title.add_css_class("title-4");
-                                    }
+                                // Create artist cards
+                                for (artist_name, artwork) in artists {
+                                    let card = create_artist_card(&artist_name, Some(&artwork));
+                                    artists_box.append(&card);
+                                }
 
-                                    let artist = gtk::Label::new(Some(&track.track.artist));
-                                    artist.set_halign(gtk::Align::Start);
-                                    artist.add_css_class("dim-label");
-                                    if i == 0 {
-                                        artist.add_css_class("title-3");
-                                    } else {
-                                        artist.add_css_class("caption");
-                                    }
-
-                                    text_box.append(&title);
-                                    text_box.append(&artist);
-                                    row.append(&text_box);
-
-                                    // Make row clickable using a GestureClick
-                                    let gesture = gtk::GestureClick::new();
-                                    let track = track.track.clone();
-                                    let current_song = current_song.clone();
-                                    let current_song_artist = current_song_artist.clone();
-                                    let current_album_art = current_album_art.clone();
-
-                                    gesture.connect_pressed(move |_gesture, _n_press, _x, _y| {
-                                        println!("Clicked track: {}", track.title);
-                                        current_song.set_label(&track.title);
-                                        current_song_artist.set_label(&track.artist);
-                                        match &track.artwork {
-                                            Artwork { thumbnail: Some(data), .. } => {
-                                                let bytes = glib::Bytes::from(data);
-                                                let stream = gio::MemoryInputStream::from_bytes(&bytes);
-                                                if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
-                                                    if let Some(scaled) = pixbuf.scale_simple(48, 48, gdk_pixbuf::InterpType::Bilinear) {
-                                                        let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
-                                                        current_album_art.set_paintable(Some(&paintable));
-                                                    }
-                                                }
-                                            },
-                                            Artwork { full_art: ArtworkSource::Local { path }, .. } => {
-                                                if let Ok(pixbuf) = Pixbuf::from_file(path) {
-                                                    if let Some(scaled) = pixbuf.scale_simple(48, 48, gdk_pixbuf::InterpType::Bilinear) {
-                                                        let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
-                                                        current_album_art.set_paintable(Some(&paintable));
-                                                    }
-                                                }
-                                            },
-                                            _ => current_album_art.set_icon_name(Some("audio-x-generic-symbolic")),
-                                        }
-                                    });
-                                    row.add_controller(gesture);
-
-                                    search_results_box.append(&row);
+                                // Create album cards
+                                for ((album_name, artist_name), artwork) in albums {
+                                    let card = create_album_card(&album_name, &artist_name, Some(&artwork));
+                                    albums_box.append(&card);
                                 }
                             }
                             Err(e) => eprintln!("Search error: {:?}", e),
@@ -507,6 +488,171 @@ mod imp {
             self.service_manager.replace(Some(manager));
         }
     }
+
+    fn create_track_card(track: &Track, is_large: bool) -> gtk::Box {
+        let card = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        card.add_css_class("track-card");
+
+        let art = match &track.artwork {
+            Artwork {
+                thumbnail: Some(data),
+                ..
+            } => {
+                let bytes = glib::Bytes::from(data);
+                let stream = gio::MemoryInputStream::from_bytes(&bytes);
+                if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
+                    let size = if is_large { 96 } else { 48 };
+                    if let Some(scaled) =
+                        pixbuf.scale_simple(size, size, gdk_pixbuf::InterpType::Bilinear)
+                    {
+                        let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
+                        gtk::Image::from_paintable(Some(&paintable))
+                    } else {
+                        gtk::Image::from_icon_name("audio-x-generic-symbolic")
+                    }
+                } else {
+                    gtk::Image::from_icon_name("audio-x-generic-symbolic")
+                }
+            }
+            Artwork {
+                full_art: ArtworkSource::Local { path },
+                ..
+            } => {
+                if let Ok(pixbuf) = Pixbuf::from_file(path) {
+                    let size = if is_large { 96 } else { 48 };
+                    if let Some(scaled) =
+                        pixbuf.scale_simple(size, size, gdk_pixbuf::InterpType::Bilinear)
+                    {
+                        let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
+                        gtk::Image::from_paintable(Some(&paintable))
+                    } else {
+                        gtk::Image::from_icon_name("audio-x-generic-symbolic")
+                    }
+                } else {
+                    gtk::Image::from_icon_name("audio-x-generic-symbolic")
+                }
+            }
+            _ => gtk::Image::from_icon_name("audio-x-generic-symbolic"),
+        };
+        art.add_css_class("album-art");
+
+        // Create labels container
+        let labels = gtk::Box::new(gtk::Orientation::Vertical, 4);
+
+        // Title
+        let title = gtk::Label::new(Some(&track.title));
+        title.add_css_class("track-title");
+        title.set_halign(gtk::Align::Start);
+
+        // Artist
+        let artist = gtk::Label::new(Some(&track.artist));
+        artist.add_css_class("track-artist");
+        artist.set_halign(gtk::Align::Start);
+
+        labels.append(&title);
+        labels.append(&artist);
+
+        card.append(&art);
+        card.append(&labels);
+
+        if is_large {
+            card.add_css_class("large-track");
+        }
+
+        card
+    }
+
+    fn create_artist_card(name: &str, artwork: Option<&Artwork>) -> gtk::Box {
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        card.add_css_class("artist-card");
+
+        let art = if let Some(artwork) = artwork {
+            match artwork {
+                Artwork {
+                    thumbnail: Some(data),
+                    ..
+                } => {
+                    let bytes = glib::Bytes::from(data);
+                    let stream = gio::MemoryInputStream::from_bytes(&bytes);
+                    if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
+                        if let Some(scaled) =
+                            pixbuf.scale_simple(150, 150, gdk_pixbuf::InterpType::Bilinear)
+                        {
+                            let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
+                            gtk::Image::from_paintable(Some(&paintable))
+                        } else {
+                            gtk::Image::from_icon_name("avatar-default-symbolic")
+                        }
+                    } else {
+                        gtk::Image::from_icon_name("avatar-default-symbolic")
+                    }
+                }
+                _ => gtk::Image::from_icon_name("avatar-default-symbolic"),
+            }
+        } else {
+            gtk::Image::from_icon_name("avatar-default-symbolic")
+        };
+        art.add_css_class("artist-image");
+
+        let name_label = gtk::Label::new(Some(name));
+        name_label.add_css_class("artist-name");
+
+        card.append(&art);
+        card.append(&name_label);
+
+        card
+    }
+
+    fn create_album_card(title: &str, artist: &str, artwork: Option<&Artwork>) -> gtk::Box {
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        card.add_css_class("album-card");
+
+        let art = if let Some(artwork) = artwork {
+            match artwork {
+                Artwork {
+                    thumbnail: Some(data),
+                    ..
+                } => {
+                    let bytes = glib::Bytes::from(data);
+                    let stream = gio::MemoryInputStream::from_bytes(&bytes);
+                    if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
+                        if let Some(scaled) =
+                            pixbuf.scale_simple(150, 150, gdk_pixbuf::InterpType::Bilinear)
+                        {
+                            let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
+                            gtk::Image::from_paintable(Some(&paintable))
+                        } else {
+                            gtk::Image::from_icon_name("audio-x-generic-symbolic")
+                        }
+                    } else {
+                        gtk::Image::from_icon_name("audio-x-generic-symbolic")
+                    }
+                }
+                _ => gtk::Image::from_icon_name("audio-x-generic-symbolic"),
+            }
+        } else {
+            gtk::Image::from_icon_name("audio-x-generic-symbolic")
+        };
+        art.add_css_class("album-image");
+
+        let labels = gtk::Box::new(gtk::Orientation::Vertical, 4);
+
+        let title_label = gtk::Label::new(Some(title));
+        title_label.add_css_class("album-title");
+
+        let artist_label = gtk::Label::new(Some(artist));
+        artist_label.add_css_class("album-artist");
+        artist_label.add_css_class("dim-label");
+
+        labels.append(&title_label);
+        labels.append(&artist_label);
+
+        card.append(&art);
+        card.append(&labels);
+
+        card
+    }
+
     impl WidgetImpl for NovaWindow {}
     impl WindowImpl for NovaWindow {}
     impl ApplicationWindowImpl for NovaWindow {}

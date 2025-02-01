@@ -8,13 +8,16 @@
 
 .queue-box {
     background-color: @headerbar_bg_color;
-    box-shadow: none;
     border-radius: 0;
 }
 
 .queue-box:last-child {
     border-bottom-left-radius: 12px;
     border-bottom-right-radius: 12px;
+    box-shadow:
+        0 -2px 4px rgba(0, 0, 0, 0),
+        2px 0 4px rgba(0, 0, 0, 0),
+        -2px 0 4px rgba(0, 0, 0, 0);
 }
 
 .queue-title {
@@ -22,9 +25,9 @@
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
     box-shadow:
-        0 -2px 4px rgba(0, 0, 0, 0.1),
-        2px 0 4px rgba(0, 0, 0, 0.1),
-        -2px 0 4px rgba(0, 0, 0, 0.1);
+        0 -2px 4px rgba(0, 0, 0, 0),
+        2px 0 4px rgba(0, 0, 0, 0),
+        -2px 0 4px rgba(0, 0, 0, 0);
     padding-top: 8px;
 }
 
@@ -159,6 +162,11 @@ image.album-art {
     background: alpha(@view_fg_color, 0.1);
 }
 
+.current_album_art {
+    padding: 12px;
+    border-radius: 12px;
+}
+
 .large-suggestion image {
     border-radius: 16px;
     margin: 12px;
@@ -183,4 +191,126 @@ image.album-art {
 .small-suggestion:hover {
     background-color: alpha(@view_fg_color, 0.1);
     transition: background-color 0.2s ease;
+}
+.search_heading {
+    font-weight: bold;
+    font-size: 24px;
+    margin-bottom: 6px;
+}
+
+.card {
+    background: alpha(@view_fg_color, 0.05);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.artist-card {
+    min-width: 150px;
+    padding: 8px;
+    border-radius: 12px;
+}
+
+.artist-card image {
+    border-radius: 50%;
+    min-width: 150px;
+    min-height: 150px;
+}
+
+.album-card {
+    min-width: 150px;
+    padding: 8px;
+    border-radius: 12px;
+}
+
+.album-card image {
+    border-radius: 12px;
+    min-width: 150px;
+    min-height: 150px;
+}
+
+.artist-card:hover,
+.album-card:hover {
+    background-color: alpha(@view_fg_color, 0.1);
+    transition: background-color 0.2s ease;
+}
+
+.track-card {
+    padding: 8px;
+    border-radius: 6px;
+}
+
+.track-card:hover {
+    background-color: alpha(@view_fg_color, 0.1);
+}
+
+.track-title {
+    font-weight: bold;
+}
+
+.track-artist {
+    opacity: 0.7;
+    font-size: 14px;
+}
+
+/* Placeholder styling */
+.placeholder-box {
+    background: alpha(@view_fg_color, 0.1);
+    border-radius: 12px;
+    margin: 6px;
+}
+
+.top-result-placeholder {
+    background: alpha(@view_fg_color, 0.1);
+    border-radius: 12px;
+}
+
+.track-placeholder {
+    background: alpha(@view_fg_color, 0.1);
+    border-radius: 12px;
+}
+
+.track-image {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.artist-placeholder {
+    background: alpha(@view_fg_color, 0.1);
+    border-radius: 75px;
+}
+.artist-image {
+    border-radius: 75%;
+}
+
+.album-placeholder {
+    background: alpha(@view_fg_color, 0.1);
+    border-radius: 12px;
+}
+
+.album-image {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.large-image {
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.small-image {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.results-card {
+    background: alpha(@view_fg_color, 0.05);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 6px 0;
+}
+
+/* Make sure placeholders are visible */
+.placeholder-box:not(:empty) {
+    min-height: 48px;
+    min-width: 48px;
 }
