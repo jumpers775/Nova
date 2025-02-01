@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use std::error::Error;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use symphonia::core::codecs::CodecParameters;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
@@ -21,6 +21,32 @@ pub struct LocalMusicProvider {
 impl LocalMusicProvider {
     pub fn new(music_dir: PathBuf) -> Self {
         Self { music_dir }
+    }
+
+    fn extract_artwork(probed: &mut Box<dyn FormatReader>) -> Option<Vec<u8>> {
+        if let Some(metadata) = probed.metadata().current() {
+            for visual in metadata.visuals() {
+                return Some(visual.data.to_vec());
+            }
+        }
+        None
+    }
+
+    fn find_album_art_file(track_path: &Path) -> Option<PathBuf> {
+        let parent = track_path.parent()?;
+        let common_names = ["cover", "folder", "album", "front"];
+        let extensions = ["jpg", "jpeg", "png"];
+
+        for name in common_names.iter() {
+            for ext in extensions.iter() {
+                let file_name = format!("{}.{}", name, ext);
+                let path = parent.join(&file_name);
+                if path.exists() {
+                    return Some(path);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -80,8 +106,28 @@ impl MusicProvider for LocalMusicProvider {
                     }
                 }
 
+                // Try to extract embedded artwork
+                let artwork = if let Some(embedded_art) =
+                    Self::extract_artwork(&mut Box::new(probed.format))
+                {
+                    Artwork {
+                        thumbnail: Some(embedded_art),
+                        full_art: ArtworkSource::None,
+                    }
+                } else if let Some(art_path) = Self::find_album_art_file(&file) {
+                    Artwork {
+                        thumbnail: None,
+                        full_art: ArtworkSource::Local { path: art_path },
+                    }
+                } else {
+                    Artwork {
+                        thumbnail: None,
+                        full_art: ArtworkSource::None,
+                    }
+                };
+
                 let track = Track {
-                    id: file.to_str().unwrap_or_default().to_string(), // Simple ID for now
+                    id: file.to_str().unwrap_or_default().to_string(),
                     title,
                     artist,
                     album,
@@ -90,10 +136,7 @@ impl MusicProvider for LocalMusicProvider {
                     disc_number: None,
                     release_year: None,
                     genre: None,
-                    artwork: Artwork {
-                        thumbnail: None,
-                        full_art: ArtworkSource::None,
-                    },
+                    artwork,
                     source: PlaybackSource::Local {
                         file_format: file
                             .extension()
@@ -120,7 +163,69 @@ impl MusicProvider for LocalMusicProvider {
         todo!()
     }
 
-    async fn search(&self, _query: &str) -> Result<Vec<Track>, Box<dyn Error>> {
-        todo!()
+    async fn search(
+        &self,
+        query: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Track>, Box<dyn Error>> {
+        let all_tracks = self.get_tracks().await?;
+
+        // Convert query to lowercase for case-insensitive matching
+        let query = query.to_lowercase();
+
+        // Score and sort tracks
+        let mut scored_tracks: Vec<(f32, Track)> = all_tracks
+            .into_iter()
+            .filter_map(|track| {
+                let mut score = 0.0;
+
+                // Score based on title match
+                if track.title.to_lowercase().contains(&query) {
+                    score += 1.0;
+                    // Bonus for exact match
+                    if track.title.to_lowercase() == query {
+                        score += 0.5;
+                    }
+                    // Bonus for start match
+                    if track.title.to_lowercase().starts_with(&query) {
+                        score += 0.3;
+                    }
+                }
+
+                // Score based on artist match
+                if track.artist.to_lowercase().contains(&query) {
+                    score += 0.8;
+                    if track.artist.to_lowercase() == query {
+                        score += 0.4;
+                    }
+                }
+
+                // Score based on album match
+                if track.album.to_lowercase().contains(&query) {
+                    score += 0.6;
+                    if track.album.to_lowercase() == query {
+                        score += 0.3;
+                    }
+                }
+
+                if score > 0.0 {
+                    Some((score, track))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Sort by score (highest first)
+        scored_tracks.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Return paginated results
+        Ok(scored_tracks
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, track)| track)
+            .collect())
     }
 }

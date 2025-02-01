@@ -130,13 +130,15 @@ template $NovaWindow: $AdwApplicationWindow {
             }
           }
 
-          $AdwOverlaySplitView nav_split {
-            hexpand: true;
-            vexpand: true;
-            collapsed: true;
-            sidebar-position: end;
-            enable-show-gesture: true;
-            enable-hide-gesture: true;
+          $AdwFlap queue_flap {
+            flap-position: end;
+            fold-policy: auto;
+            locked: false;
+            modal: false;
+            width-request: 300;
+            swipe-to-open: true;
+            swipe-to-close: true;
+            reveal-flap: false;
 
             content: Box {
               orientation: vertical;
@@ -224,18 +226,14 @@ template $NovaWindow: $AdwApplicationWindow {
                 }
 
                 $AdwViewStackPage {
-                  name: 'search';
-                  title: 'Search';
-
-                  child: $AdwStatusPage {
-                    title: 'Search Results';
-                    description: 'Search results will appear here';
-                    icon-name: 'system-search-symbolic';
-
-                    styles [
-                      "status-page"
-                    ]
-                  };
+                    name: 'search';
+                    title: 'Search';
+                    child: ScrolledWindow {
+                        child: Box search_results_box{
+                            orientation: vertical;
+                            spacing: 12;
+                        };
+                    };
                 }
 
                 $AdwViewStackPage {
@@ -296,29 +294,28 @@ template $NovaWindow: $AdwApplicationWindow {
               }
             };
 
-            sidebar: Revealer sidebar_revealer {
-              transition-type: slide_left;
-              transition-duration: 250;
-              reveal-child: false;
+            flap: ScrolledWindow {
               width-request: 300;
-              halign: fill;
+              vexpand: true;
 
-              child: ScrolledWindow {
-                halign: fill;
-                hexpand: true;
+              styles [
+                "queue-sidebar"
+              ]
+
+              Box {
+                orientation: vertical;
+                vexpand: true;
+
                 styles [
-                  "queue-sidebar"
+                  "navigation-sidebar"
                 ]
 
                 Box {
                   orientation: vertical;
-                  halign: fill;
-                  hexpand: true;
-                  spacing: 12;
-
-                  styles [
-                    "navigation-sidebar"
-                  ]
+                  margin-start: 12;
+                  margin-end: 12;
+                  margin-top: 12;
+                  margin-bottom: 12;
 
                   Label {
                     label: 'Now Playing';
@@ -331,8 +328,8 @@ template $NovaWindow: $AdwApplicationWindow {
                   }
 
                   ListBox queue_list {
+                    vexpand: true;
                     selection-mode: none;
-                    hexpand: true;
 
                     styles [
                       "navigation-sidebar",

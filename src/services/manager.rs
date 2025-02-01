@@ -51,13 +51,20 @@ impl ServiceManager {
     }
 
     pub async fn search_all(&self, query: &str) -> Result<Vec<PlayableItem>, ServiceError> {
-        let mut results = Vec::new();
+        // TODO:
+        // - Improve sorting algorithm
+        // - Implement pagination
+
+        const RESULTS_PER_PAGE: usize = 20;
+        let offset = 0; // pagination not implemented
+
+        let mut all_results = Vec::new();
         let providers = self.providers.read().await;
 
         for (provider_name, provider) in providers.iter() {
-            match provider.search(query).await {
+            match provider.search(query, RESULTS_PER_PAGE, offset).await {
                 Ok(tracks) => {
-                    results.extend(tracks.into_iter().map(|track| PlayableItem {
+                    all_results.extend(tracks.into_iter().map(|track| PlayableItem {
                         track,
                         provider: provider_name.clone(),
                         added_at: Utc::now(),
@@ -69,6 +76,9 @@ impl ServiceManager {
             }
         }
 
-        Ok(results)
+        // Sort combined results.
+        all_results.sort_by(|a, b| a.track.title.cmp(&b.track.title));
+
+        Ok(all_results)
     }
 }

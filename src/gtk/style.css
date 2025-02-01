@@ -1,17 +1,9 @@
 .navigation-sidebar {
     background-color: @window_bg_color;
 }
-.queue-sidebar .queue-title,
-.queue-sidebar .queue-box {
-    margin-right: 8px;
-}
+
 .queue-sidebar {
     background-color: @window_bg_color;
-    transition: margin 250ms ease-in-out;
-}
-
-.queue-sidebar.collapsed {
-    margin-end: -300px; /* match sidebar width */
 }
 
 .queue-box {
@@ -33,7 +25,7 @@
         0 -2px 4px rgba(0, 0, 0, 0.1),
         2px 0 4px rgba(0, 0, 0, 0.1),
         -2px 0 4px rgba(0, 0, 0, 0.1);
-    padding-top: 6px;
+    padding-top: 8px;
 }
 
 .queue-box.rounded:backdrop {
@@ -107,4 +99,88 @@ button.play-button:hover {
 
 togglebutton.circular:checked {
     background-color: alpha(@accent_bg_color, 0.3);
+}
+
+.large-suggestion {
+    padding: 12px;
+    margin: 6px 12px;
+    border-radius: 12px;
+    background-color: transparent;
+}
+
+.small-suggestion {
+    padding: 6px;
+    margin: 3px 12px;
+    border-radius: 8px;
+    background-color: transparent;
+}
+
+.search-suggestion:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+}
+
+.album-art {
+    border-radius: 4px;
+    background: alpha(@view_fg_color, 0.1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    min-width: 48px;
+    min-height: 48px;
+}
+
+.large-suggestion .album-art {
+    margin: 12px;
+    min-width: 96px;
+    min-height: 96px;
+}
+
+.small-suggestion .album-art {
+    margin: 6px;
+    min-width: 48px;
+    min-height: 48px;
+}
+
+.large-suggestion .title-1 {
+    font-weight: bold;
+    margin-top: 6px;
+}
+
+.large-suggestion .title-3 {
+    margin-top: 4px;
+}
+
+.small-suggestion .title-4 {
+    font-weight: 500;
+}
+#search-album-art,
+image.album-art {
+    border-radius: 12px;
+    overflow: hidden;
+    background: alpha(@view_fg_color, 0.1);
+}
+
+.large-suggestion image {
+    border-radius: 16px;
+    margin: 12px;
+    min-width: 96px;
+    min-height: 96px;
+}
+
+.small-suggestion image {
+    border-radius: 8px;
+    margin: 6px;
+    min-width: 48px;
+    min-height: 48px;
+}
+
+/* Try forcing the style with !important if needed */
+image.album-art {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+
+.large-suggestion:hover,
+.small-suggestion:hover {
+    background-color: alpha(@view_fg_color, 0.1);
+    transition: background-color 0.2s ease;
 }

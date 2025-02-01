@@ -808,6 +808,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "dirs",
+ "gdk-pixbuf",
  "gettext-rs",
  "gtk4",
  "id3",
