@@ -182,9 +182,22 @@ image.album-art {
 }
 
 /* Try forcing the style with !important if needed */
-image.album-art {
+.search-results-scroll image.album-art,
+.top-result-box image.album-art {
     border-radius: 12px !important;
     overflow: hidden !important;
+    background: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* Keep the original styling for the player controls album art */
+.playback-controls image.album-art {
+    border-radius: 4px;
+    background: alpha(@view_fg_color, 0.1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    min-width: 48px;
+    min-height: 48px;
 }
 
 .large-suggestion:hover,
@@ -218,8 +231,34 @@ image.album-art {
 
 .album-card {
     min-width: 150px;
+    max-width: 150px;
     padding: 8px;
     border-radius: 12px;
+}
+
+.album-title,
+.album-artist {
+    font-size: 14px;
+    padding: 0 4px;
+    margin: 0;
+    width: 130px;
+    min-width: 130px;
+    max-width: 130px;
+}
+
+.album-title {
+    font-weight: bold;
+    max-height: 2.4em;
+}
+
+.artist-name {
+    font-weight: bold;
+    max-height: 2.4em;
+}
+
+.album-artist {
+    opacity: 0.7;
+    max-height: 1.2em;
 }
 
 .album-card image {
@@ -292,7 +331,28 @@ image.album-art {
     overflow: hidden;
 }
 
+.large-track {
+    padding: 24px;
+    margin: 12px;
+}
+
+.large-track .album-art {
+    margin-bottom: 16px;
+}
+
+.large-track .track-title {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.large-track .track-artist {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
 .large-image {
+    min-width: 170px;
+    min-height: 170px;
     border-radius: 16px;
     overflow: hidden;
 }
@@ -313,4 +373,31 @@ image.album-art {
 .placeholder-box:not(:empty) {
     min-height: 48px;
     min-width: 48px;
+}
+
+.type-label {
+    font-size: 14px;
+    opacity: 0.7;
+}
+.artist-card,
+.album-card {
+    hexpand: false;
+    halign: center;
+}
+
+.top-result-box,
+.card {
+    min-height: 320px;
+    max-height: 320px;
+}
+
+.top-result-box label,
+.card label {
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.track-card.large-track {
+    margin: 0;
+    padding: 12px;
 }

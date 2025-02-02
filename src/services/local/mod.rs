@@ -48,6 +48,52 @@ impl LocalMusicProvider {
         }
         None
     }
+
+    fn calculate_match_score(
+        name: &str,
+        artist: Option<&str>,
+        album: Option<&str>,
+        query: &str,
+    ) -> i32 {
+        let mut score = 0;
+        let query = query.to_lowercase();
+        let name = name.to_lowercase();
+
+        // Score for name/title match
+        if name == query {
+            score += 300; // Exact match
+        } else if name.starts_with(&query) {
+            score += 200; // Starts with query
+        } else if name.contains(&query) {
+            score += 100; // Contains query
+        }
+
+        // Score for artist match if provided
+        if let Some(artist) = artist {
+            let artist = artist.to_lowercase();
+            if artist == query {
+                score += 200;
+            } else if artist.starts_with(&query) {
+                score += 150;
+            } else if artist.contains(&query) {
+                score += 75;
+            }
+        }
+
+        // Score for album match if provided
+        if let Some(album) = album {
+            let album = album.to_lowercase();
+            if album == query {
+                score += 150;
+            } else if album.starts_with(&query) {
+                score += 100;
+            } else if album.contains(&query) {
+                score += 50;
+            }
+        }
+
+        score
+    }
 }
 
 #[async_trait]
@@ -57,24 +103,40 @@ impl MusicProvider for LocalMusicProvider {
         if self.music_dir.is_dir() {
             let music_files = scanner::FileScanner::scan_directory(&self.music_dir)?;
             for file in music_files {
-                // Get file size before opening file for symphonia
-                let file_size = std::fs::metadata(&file)?.len();
+                let file_size = match std::fs::metadata(&file) {
+                    Ok(metadata) => metadata.len(),
+                    Err(_) => continue, // Skip files we can't read metadata for
+                };
 
-                let src = File::open(&file)?;
+                let src = match File::open(&file) {
+                    Ok(file) => file,
+                    Err(_) => continue, // Skip files we can't open
+                };
+
                 let mss = MediaSourceStream::new(Box::new(src), Default::default());
                 let meta_opts: MetadataOptions = Default::default();
                 let fmt_opts: FormatOptions = Default::default();
                 let hint = Hint::new();
-                let mut probed = symphonia::default::get_probe()
-                    .format(&hint, mss, &fmt_opts, &meta_opts)
-                    .map_err(|e| Box::new(ServiceError::ProviderError(e.to_string())))?;
 
-                // Default values
-                let mut title = file
+                let mut probed = match symphonia::default::get_probe()
+                    .format(&hint, mss, &fmt_opts, &meta_opts)
+                {
+                    Ok(probed) => probed,
+                    Err(_) => continue, // Skip files that can't be probed
+                };
+
+                // Get filename without extension as default title
+                let default_title = file
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
+                    .map(|name| {
+                        name.rfind('.')
+                            .map(|i| name[..i].to_string())
+                            .unwrap_or_else(|| name.to_string())
+                    })
+                    .unwrap_or_else(|| String::from("Unknown"));
+
+                let mut title = default_title;
                 let mut artist = String::from("Unknown Artist");
                 let mut album = String::from("Unknown Album");
                 let mut duration = 0;
@@ -87,9 +149,21 @@ impl MusicProvider for LocalMusicProvider {
                         let value = tag.value.to_string();
 
                         match key.as_str() {
-                            "TITLE" => title = value,
-                            "ARTIST" => artist = value,
-                            "ALBUM" => album = value,
+                            "TITLE" => {
+                                if !value.is_empty() {
+                                    title = value;
+                                }
+                            }
+                            "ARTIST" => {
+                                if !value.is_empty() {
+                                    artist = value;
+                                }
+                            }
+                            "ALBUM" => {
+                                if !value.is_empty() {
+                                    album = value;
+                                }
+                            }
                             _ => (),
                         }
                     }
@@ -170,46 +244,18 @@ impl MusicProvider for LocalMusicProvider {
         offset: usize,
     ) -> Result<Vec<Track>, Box<dyn Error>> {
         let all_tracks = self.get_tracks().await?;
-
-        // Convert query to lowercase for case-insensitive matching
         let query = query.to_lowercase();
 
-        // Score and sort tracks
-        let mut scored_tracks: Vec<(f32, Track)> = all_tracks
+        let mut scored_tracks: Vec<(i32, Track)> = all_tracks
             .into_iter()
             .filter_map(|track| {
-                let mut score = 0.0;
-
-                // Score based on title match
-                if track.title.to_lowercase().contains(&query) {
-                    score += 1.0;
-                    // Bonus for exact match
-                    if track.title.to_lowercase() == query {
-                        score += 0.5;
-                    }
-                    // Bonus for start match
-                    if track.title.to_lowercase().starts_with(&query) {
-                        score += 0.3;
-                    }
-                }
-
-                // Score based on artist match
-                if track.artist.to_lowercase().contains(&query) {
-                    score += 0.8;
-                    if track.artist.to_lowercase() == query {
-                        score += 0.4;
-                    }
-                }
-
-                // Score based on album match
-                if track.album.to_lowercase().contains(&query) {
-                    score += 0.6;
-                    if track.album.to_lowercase() == query {
-                        score += 0.3;
-                    }
-                }
-
-                if score > 0.0 {
+                let score = Self::calculate_match_score(
+                    &track.title,
+                    Some(&track.artist),
+                    Some(&track.album),
+                    &query,
+                );
+                if score > 0 {
                     Some((score, track))
                 } else {
                     None
@@ -217,10 +263,8 @@ impl MusicProvider for LocalMusicProvider {
             })
             .collect();
 
-        // Sort by score (highest first)
-        scored_tracks.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        scored_tracks.sort_by(|a, b| b.0.cmp(&a.0));
 
-        // Return paginated results
         Ok(scored_tracks
             .into_iter()
             .skip(offset)

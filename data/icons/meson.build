@@ -19,6 +19,7 @@ missing_icons = [
   'symbolic/emblems/emblem-favorite-symbolic.svg',
   'symbolic/actions/media-skip-backward-symbolic.svg',
   'symbolic/actions/media-skip-forward-symbolic.svg',
+  'symbolic/mimetypes/audio-x-generic-symbolic.svg',
 ]
 
 install_data(missing_icons, install_dir: get_option('datadir') / 'icons' / symbolic_dir)

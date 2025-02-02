@@ -231,6 +231,7 @@ template $NovaWindow: $AdwApplicationWindow {
                     child: Stack search_stack {
                         [child]
                         ScrolledWindow search_results_scroll {
+                            styles ["search-results-scroll"]
                             child: Box search_results_box {
                                 orientation: vertical;
                                 spacing: 12;
@@ -247,7 +248,7 @@ template $NovaWindow: $AdwApplicationWindow {
                                     Box {
                                         orientation: vertical;
                                         spacing: 6;
-                                        hexpand: true;
+                                        hexpand: false;
 
                                         Label {
                                             label: 'Top Result';
@@ -255,9 +256,22 @@ template $NovaWindow: $AdwApplicationWindow {
                                             styles ["search_heading"]
                                         }
 
-                                        Box top_result_box {
-                                            orientation: vertical;
-                                            styles ["card"]
+                                        CenterBox top_result_box {
+                                            hexpand: false;
+                                            vexpand: false;
+                                            height-request: 345;
+                                            width-request: 345;
+
+
+                                            styles ["card", "top-result-box"]
+
+                                            [center]
+                                            Box content_box {
+                                                orientation: vertical;
+                                                spacing: 12;
+                                                valign: center;
+                                                halign: center;
+                                            }
                                         }
                                     }
 
@@ -281,43 +295,54 @@ template $NovaWindow: $AdwApplicationWindow {
                                 }
 
                                 // Artists Section
-                                Label {
-                                    label: 'Artists';
-                                    halign: start;
-                                    margin-top: 12;
-                                    styles ["search_heading"]
-                                }
+                                Box artists_section {
+                                    orientation: vertical;
+                                    visible: false;
 
-                                ScrolledWindow artists_scroll {
-                                    hscrollbar-policy: external;
-                                    vscrollbar-policy: never;
-                                    styles ["scroll-container"]
+                                    Label {
+                                        label: 'Artists';
+                                        halign: start;
+                                        margin-top: 12;
+                                        styles ["search_heading"]
+                                    }
 
-                                    Box artists_box {
-                                        orientation: horizontal;
-                                        spacing: 12;
-                                        margin-top: 6;
-                                        styles ["results-card"]
+                                    ScrolledWindow artists_scroll {
+                                        hscrollbar-policy: automatic;
+                                        vscrollbar-policy: never;
+                                        styles ["scroll-container"]
+
+                                        Box artists_box {
+                                            orientation: horizontal;
+                                            spacing: 12;
+                                            margin-top: 6;
+                                            styles ["results-card"]
+                                        }
                                     }
                                 }
-                                Label {
-                                    label: 'Albums';
-                                    halign: start;
-                                    margin-top: 12;
-                                    styles ["search_heading"]
-                                }
 
-                                // Albums Section
-                                ScrolledWindow albums_scroll {
-                                    hscrollbar-policy: external;
-                                    vscrollbar-policy: never;
-                                    styles ["scroll-container"]
+                                // Add a container box for the Albums section
+                                Box albums_section {
+                                    orientation: vertical;
+                                    visible: false;
 
-                                    Box albums_box {
-                                        orientation: horizontal;
-                                        spacing: 12;
-                                        margin-top: 6;
-                                        styles ["results-card"]
+                                    Label {
+                                        label: 'Albums';
+                                        halign: start;
+                                        margin-top: 12;
+                                        styles ["search_heading"]
+                                    }
+
+                                    ScrolledWindow albums_scroll {
+                                        hscrollbar-policy: automatic;
+                                        vscrollbar-policy: never;
+                                        styles ["scroll-container"]
+
+                                        Box albums_box {
+                                            orientation: horizontal;
+                                            spacing: 12;
+                                            margin-top: 6;
+                                            styles ["results-card"]
+                                        }
                                     }
                                 }
                             };
@@ -332,6 +357,17 @@ template $NovaWindow: $AdwApplicationWindow {
                           "compact"
                          ]
                         }
+
+                        $AdwStatusPage no_results_page {
+                            name: "no_results_page";
+                            title: 'No Results Found';
+                            description: 'Try searching with different keywords';
+                            icon-name: 'system-search-symbolic';
+                            styles [
+                                "compact"
+                            ]
+                        }
+
                     };
                 }
 

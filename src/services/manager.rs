@@ -51,12 +51,8 @@ impl ServiceManager {
     }
 
     pub async fn search_all(&self, query: &str) -> Result<Vec<PlayableItem>, ServiceError> {
-        // TODO:
-        // - Improve sorting algorithm
-        // - Implement pagination
-
         const RESULTS_PER_PAGE: usize = 20;
-        let offset = 0; // pagination not implemented
+        let offset = 0;
 
         let mut all_results = Vec::new();
         let providers = self.providers.read().await;
@@ -75,9 +71,6 @@ impl ServiceManager {
                 }
             }
         }
-
-        // Sort combined results.
-        all_results.sort_by(|a, b| a.track.title.cmp(&b.track.title));
 
         Ok(all_results)
     }
