@@ -51,24 +51,36 @@ impl ServiceManager {
     }
 
     pub async fn search_all(&self, query: &str) -> Result<Vec<PlayableItem>, ServiceError> {
-        const RESULTS_PER_PAGE: usize = 20;
+        const RESULTS_PER_PROVIDER: usize = 20;
         let offset = 0;
 
         let mut all_results = Vec::new();
         let providers = self.providers.read().await;
 
+        // Query all providers concurrently
+        let mut futures = Vec::new();
         for (provider_name, provider) in providers.iter() {
-            match provider.search(query, RESULTS_PER_PAGE, offset).await {
-                Ok(tracks) => {
-                    all_results.extend(tracks.into_iter().map(|track| PlayableItem {
-                        track,
-                        provider: provider_name.clone(),
-                        added_at: Utc::now(),
-                    }));
+            let provider_name = provider_name.clone();
+            let future = async move {
+                match provider.search(query, RESULTS_PER_PROVIDER, offset).await {
+                    Ok(tracks) => Some((provider_name, tracks)),
+                    Err(e) => {
+                        eprintln!("Error searching in {}: {}", provider_name, e);
+                        None
+                    }
                 }
-                Err(e) => {
-                    eprintln!("Error searching in {}: {}", provider_name, e);
-                }
+            };
+            futures.push(future);
+        }
+
+        // Wait for all searches to complete
+        for result in futures::future::join_all(futures).await {
+            if let Some((provider_name, tracks)) = result {
+                all_results.extend(tracks.into_iter().map(|track| PlayableItem {
+                    track,
+                    provider: provider_name.clone(),
+                    added_at: Utc::now(),
+                }));
             }
         }
 

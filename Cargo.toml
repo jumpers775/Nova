@@ -17,6 +17,8 @@ chrono = { version = "0.4", features = ["serde"] }
 symphonia = { version = "0.5", features = ["all-codecs"] }
 gdk-pixbuf = "0.20"
 cairo-rs = "0.20"
+futures = "0.3"
+fuzzy-matcher = "0.3"
 
 
 [dependencies.adw]

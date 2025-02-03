@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use std::error::Error;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -245,17 +247,59 @@ impl MusicProvider for LocalMusicProvider {
     ) -> Result<Vec<Track>, Box<dyn Error>> {
         let all_tracks = self.get_tracks().await?;
         let query = query.to_lowercase();
+        let query_words: Vec<&str> = query.split_whitespace().collect();
 
-        let mut scored_tracks: Vec<(i32, Track)> = all_tracks
+        let matcher = SkimMatcherV2::default().ignore_case().use_cache(true);
+
+        let mut scored_tracks: Vec<(i64, Track)> = all_tracks
             .into_iter()
             .filter_map(|track| {
-                let score = Self::calculate_match_score(
-                    &track.title,
-                    Some(&track.artist),
-                    Some(&track.album),
-                    &query,
-                );
-                if score > 0 {
+                let mut score = 0i64;
+
+                // Check each word in the query separately
+                for word in &query_words {
+                    // Title matching
+                    if let Some(title_score) = matcher.fuzzy_match(&track.title, word) {
+                        score += title_score * 3;
+                    }
+                    // Simple contains check for more leniency
+                    if track.title.to_lowercase().contains(word) {
+                        score += 500;
+                    }
+
+                    // Artist matching
+                    if let Some(artist_score) = matcher.fuzzy_match(&track.artist, word) {
+                        score += artist_score * 2;
+                    }
+                    if track.artist.to_lowercase().contains(word) {
+                        score += 300;
+                    }
+
+                    // Album matching
+                    if let Some(album_score) = matcher.fuzzy_match(&track.album, word) {
+                        score += album_score;
+                    }
+                    if track.album.to_lowercase().contains(word) {
+                        score += 200;
+                    }
+                }
+
+                // Bonus points for matching more query words
+                let matched_words = query_words
+                    .iter()
+                    .filter(|&&word| {
+                        track.title.to_lowercase().contains(word)
+                            || track.artist.to_lowercase().contains(word)
+                            || track.album.to_lowercase().contains(word)
+                    })
+                    .count();
+
+                if matched_words > 0 {
+                    score += (matched_words as i64) * 1000;
+                }
+
+                // Even if the fuzzy match score is low, if we match any words, include it
+                if score > 0 || matched_words > 0 {
                     Some((score, track))
                 } else {
                     None
@@ -263,8 +307,10 @@ impl MusicProvider for LocalMusicProvider {
             })
             .collect();
 
+        // Sort by score (highest first)
         scored_tracks.sort_by(|a, b| b.0.cmp(&a.0));
 
+        // Apply pagination
         Ok(scored_tracks
             .into_iter()
             .skip(offset)

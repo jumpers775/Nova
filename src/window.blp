@@ -249,6 +249,7 @@ template $NovaWindow: $AdwApplicationWindow {
                                         orientation: vertical;
                                         spacing: 6;
                                         hexpand: false;
+                                        visible: false;
 
                                         Label {
                                             label: 'Top Result';
@@ -259,6 +260,7 @@ template $NovaWindow: $AdwApplicationWindow {
                                         CenterBox top_result_box {
                                             hexpand: false;
                                             vexpand: false;
+                                            visible: false;
                                             height-request: 345;
                                             width-request: 345;
 
@@ -269,6 +271,7 @@ template $NovaWindow: $AdwApplicationWindow {
                                             Box content_box {
                                                 orientation: vertical;
                                                 spacing: 12;
+                                                visible: false;
                                                 valign: center;
                                                 halign: center;
                                             }
@@ -280,6 +283,7 @@ template $NovaWindow: $AdwApplicationWindow {
                                         orientation: vertical;
                                         spacing: 6;
                                         hexpand: true;
+                                        visible: false;
 
                                         Label {
                                             label: 'Songs';
@@ -289,6 +293,7 @@ template $NovaWindow: $AdwApplicationWindow {
 
                                         Box tracks_box {
                                             orientation: vertical;
+                                            visible: false;
                                             styles ["card"]
                                         }
                                     }

@@ -1,7 +1,23 @@
+/* Basic Layout and Navigation */
 .navigation-sidebar {
     background-color: @window_bg_color;
 }
 
+.home-button.selected {
+    background-color: alpha(@view_fg_color, 0.1);
+    color: @view_fg_color;
+}
+
+.menu-button {
+    margin-right: 6px;
+}
+
+.search-entry {
+    margin-left: 12px;
+    margin-right: 12px;
+}
+
+/* Queue Sidebar Styling */
 .queue-sidebar {
     background-color: @window_bg_color;
 }
@@ -35,11 +51,16 @@
     background-color: @window_bg_color;
 }
 
+/* Playback Controls */
+.control-button {
+    min-width: 36px;
+    min-height: 36px;
+}
+
 button.circular.active {
     background-color: alpha(@accent_bg_color, 0.3);
 }
 
-/* Specific styling for the play button */
 button.play-button {
     background-color: @accent_bg_color;
     color: @accent_fg_color;
@@ -51,12 +72,22 @@ button.play-button:hover {
     background-color: shade(@accent_bg_color, 1.1);
 }
 
-/* Constrain volume controls height */
+togglebutton.circular:checked {
+    background-color: alpha(@accent_bg_color, 0.3);
+}
+
+/* Progress Bar */
+.progress-bar {
+    min-height: 4px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+/* Volume Controls */
 #volume-scale {
     min-height: 24px;
 }
 
-/* Adjust volume controls container alignment */
 #volume-scale,
 #mute-button,
 #queue-toggle {
@@ -64,7 +95,6 @@ button.play-button:hover {
     margin-bottom: 0;
 }
 
-/* Optional: Fine-tune slider dimensions */
 #volume-scale slider {
     min-width: 16px;
     min-height: 16px;
@@ -74,205 +104,33 @@ button.play-button:hover {
     min-height: 4px;
 }
 
-.home-button.selected {
-    background-color: alpha(@view_fg_color, 0.1);
-    color: @view_fg_color;
-}
-
-/* style.css */
-.menu-button {
-    margin-right: 6px;
-}
-
-.search-entry {
-    margin-left: 12px;
-    margin-right: 12px;
-}
-
-.control-button {
-    min-width: 36px;
-    min-height: 36px;
-}
-
-.progress-bar {
-    min-height: 4px;
-    margin-top: 4px;
-    margin-bottom: 4px;
-}
-
-togglebutton.circular:checked {
-    background-color: alpha(@accent_bg_color, 0.3);
-}
-
-.large-suggestion {
-    padding: 12px;
-    margin: 6px 12px;
-    border-radius: 12px;
-    background-color: transparent;
-}
-
-.small-suggestion {
-    padding: 6px;
-    margin: 3px 12px;
-    border-radius: 8px;
-    background-color: transparent;
-}
-
-.search-suggestion:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-    cursor: pointer;
-}
-
-.album-art {
-    border-radius: 4px;
-    background: alpha(@view_fg_color, 0.1);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    min-width: 48px;
-    min-height: 48px;
-}
-
-.large-suggestion .album-art {
-    margin: 12px;
-    min-width: 96px;
-    min-height: 96px;
-}
-
-.small-suggestion .album-art {
-    margin: 6px;
-    min-width: 48px;
-    min-height: 48px;
-}
-
-.large-suggestion .title-1 {
-    font-weight: bold;
-    margin-top: 6px;
-}
-
-.large-suggestion .title-3 {
-    margin-top: 4px;
-}
-
-.small-suggestion .title-4 {
-    font-weight: 500;
-}
-#search-album-art,
-image.album-art {
-    border-radius: 12px;
-    overflow: hidden;
-    background: alpha(@view_fg_color, 0.1);
-}
-
-.current_album_art {
-    padding: 12px;
-    border-radius: 12px;
-}
-
-.large-suggestion image {
-    border-radius: 16px;
-    margin: 12px;
-    min-width: 96px;
-    min-height: 96px;
-}
-
-.small-suggestion image {
-    border-radius: 8px;
-    margin: 6px;
-    min-width: 48px;
-    min-height: 48px;
-}
-
-/* Try forcing the style with !important if needed */
-.search-results-scroll image.album-art,
-.top-result-box image.album-art {
-    border-radius: 12px !important;
-    overflow: hidden !important;
-    background: none;
-    padding: 0;
-    margin: 0;
-}
-
-/* Keep the original styling for the player controls album art */
-.playback-controls image.album-art {
-    border-radius: 4px;
-    background: alpha(@view_fg_color, 0.1);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    min-width: 48px;
-    min-height: 48px;
-}
-
-.large-suggestion:hover,
-.small-suggestion:hover {
-    background-color: alpha(@view_fg_color, 0.1);
-    transition: background-color 0.2s ease;
-}
+/* Search Results Section */
 .search_heading {
     font-weight: bold;
     font-size: 24px;
     margin-bottom: 6px;
 }
 
+/* Top Result Box */
+.top-result-box,
 .card {
+    min-height: 320px;
+    max-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: alpha(@view_fg_color, 0.05);
     border-radius: 12px;
     padding: 12px;
 }
 
-.artist-card {
-    min-width: 150px;
-    padding: 8px;
-    border-radius: 12px;
+.top-result-box label,
+.card label {
+    margin-bottom: 0;
+    padding-bottom: 0;
 }
 
-.artist-card image {
-    border-radius: 50%;
-    min-width: 150px;
-    min-height: 150px;
-}
-
-.album-card {
-    min-width: 150px;
-    max-width: 150px;
-    padding: 8px;
-    border-radius: 12px;
-}
-
-.album-title,
-.album-artist {
-    font-size: 14px;
-    padding: 0 4px;
-    margin: 0;
-    width: 130px;
-    min-width: 130px;
-    max-width: 130px;
-}
-
-.album-title {
-    font-weight: bold;
-    max-height: 2.4em;
-}
-
-.artist-name {
-    font-weight: bold;
-    max-height: 2.4em;
-}
-
-.album-artist {
-    opacity: 0.7;
-    max-height: 1.2em;
-}
-
-.album-card image {
-    border-radius: 12px;
-    min-width: 150px;
-    min-height: 150px;
-}
-
-.artist-card:hover,
-.album-card:hover {
-    background-color: alpha(@view_fg_color, 0.1);
-    transition: background-color 0.2s ease;
-}
-
+/* Track Cards */
 .track-card {
     padding: 8px;
     border-radius: 6px;
@@ -282,6 +140,12 @@ image.album-art {
     background-color: alpha(@view_fg_color, 0.1);
 }
 
+.track-card.large-track {
+    margin: 0;
+    padding: 12px;
+    align-self: center;
+}
+
 .track-title {
     font-weight: bold;
 }
@@ -289,46 +153,6 @@ image.album-art {
 .track-artist {
     opacity: 0.7;
     font-size: 14px;
-}
-
-/* Placeholder styling */
-.placeholder-box {
-    background: alpha(@view_fg_color, 0.1);
-    border-radius: 12px;
-    margin: 6px;
-}
-
-.top-result-placeholder {
-    background: alpha(@view_fg_color, 0.1);
-    border-radius: 12px;
-}
-
-.track-placeholder {
-    background: alpha(@view_fg_color, 0.1);
-    border-radius: 12px;
-}
-
-.track-image {
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.artist-placeholder {
-    background: alpha(@view_fg_color, 0.1);
-    border-radius: 75px;
-}
-.artist-image {
-    border-radius: 75%;
-}
-
-.album-placeholder {
-    background: alpha(@view_fg_color, 0.1);
-    border-radius: 12px;
-}
-
-.album-image {
-    border-radius: 12px;
-    overflow: hidden;
 }
 
 .large-track {
@@ -350,6 +174,86 @@ image.album-art {
     opacity: 0.8;
 }
 
+/* Artist Cards */
+.artist-card {
+    min-width: 150px;
+    padding: 8px;
+    border-radius: 12px;
+    hexpand: false;
+    halign: center;
+}
+
+.artist-card image {
+    border-radius: 50%;
+    min-width: 150px;
+    min-height: 150px;
+}
+
+.artist-name {
+    font-weight: bold;
+    max-height: 2.4em;
+}
+
+.artist-card:hover {
+    background-color: alpha(@view_fg_color, 0.1);
+    transition: background-color 0.2s ease;
+}
+
+/* Album Cards */
+.album-card {
+    min-width: 150px;
+    max-width: 150px;
+    padding: 8px;
+    border-radius: 12px;
+    hexpand: false;
+    halign: center;
+}
+
+.album-card image {
+    border-radius: 12px;
+    min-width: 150px;
+    min-height: 150px;
+}
+
+.album-title,
+.album-artist {
+    font-size: 14px;
+    padding: 0 4px;
+    margin: 0;
+    width: 130px;
+    min-width: 130px;
+    max-width: 130px;
+}
+
+.album-title {
+    font-weight: bold;
+    max-height: 2.4em;
+}
+
+.album-artist {
+    opacity: 0.7;
+    max-height: 1.2em;
+}
+
+.album-card:hover {
+    background-color: alpha(@view_fg_color, 0.1);
+    transition: background-color 0.2s ease;
+}
+
+/* Album Art Styling */
+.album-art {
+    border-radius: 4px;
+    background: alpha(@view_fg_color, 0.1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    min-width: 48px;
+    min-height: 48px;
+}
+
+.current_album_art {
+    padding: 12px;
+    border-radius: 12px;
+}
+
 .large-image {
     min-width: 170px;
     min-height: 170px;
@@ -362,6 +266,42 @@ image.album-art {
     overflow: hidden;
 }
 
+/* Search Results Specific Album Art */
+.search-results-scroll image.album-art,
+.top-result-box image.album-art {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    background: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* Player Controls Album Art */
+.playback-controls image.album-art {
+    border-radius: 4px;
+    background: alpha(@view_fg_color, 0.1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    min-width: 48px;
+    min-height: 48px;
+}
+
+/* Loading Animation */
+.loading-dot {
+    background-color: @accent_bg_color;
+    border-radius: 50%;
+    min-width: 8px;
+    min-height: 8px;
+    margin: 0 4px;
+    transition: margin-top 300ms ease;
+}
+
+/* Type Labels */
+.type-label {
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+/* Card Results Container */
 .results-card {
     background: alpha(@view_fg_color, 0.05);
     border-radius: 12px;
@@ -369,35 +309,26 @@ image.album-art {
     margin: 6px 0;
 }
 
-/* Make sure placeholders are visible */
+/* Placeholder Styling */
+.placeholder-box {
+    background: alpha(@view_fg_color, 0.1);
+    border-radius: 12px;
+    margin: 6px;
+}
+
 .placeholder-box:not(:empty) {
     min-height: 48px;
     min-width: 48px;
 }
 
-.type-label {
-    font-size: 14px;
-    opacity: 0.7;
-}
-.artist-card,
-.album-card {
-    hexpand: false;
-    halign: center;
+.top-result-placeholder,
+.track-placeholder,
+.album-placeholder {
+    background: alpha(@view_fg_color, 0.1);
+    border-radius: 12px;
 }
 
-.top-result-box,
-.card {
-    min-height: 320px;
-    max-height: 320px;
-}
-
-.top-result-box label,
-.card label {
-    margin-bottom: 0;
-    padding-bottom: 0;
-}
-
-.track-card.large-track {
-    margin: 0;
-    padding: 12px;
+.artist-placeholder {
+    background: alpha(@view_fg_color, 0.1);
+    border-radius: 75px;
 }
