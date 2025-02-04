@@ -246,8 +246,27 @@ impl NovaWindow {
                     return;
                 }
 
-                // Show loading state
-                show_loading_state(this);
+                // Check for existing results
+                let has_existing_results = this.top_result_box.center_widget().is_some()
+                    || this.tracks_box.first_child().is_some()
+                    || this.artists_box.first_child().is_some()
+                    || this.albums_box.first_child().is_some();
+
+                // Check if we're on the empty search page
+                let is_empty_page = this
+                    .search_stack
+                    .visible_child_name()
+                    .map_or(true, |name| name == "empty_search_page");
+
+                // Only show loading state if no existing results
+                if !has_existing_results || is_empty_page {
+                    this.search_stack
+                        .set_visible_child_name("search_results_scroll");
+                    show_loading_state(this);
+                } else {
+                    this.search_stack
+                        .set_visible_child_name("search_results_scroll");
+                }
 
                 // Cancel previous search if running
                 if let Some(handle) = this.current_search_handle.take() {
