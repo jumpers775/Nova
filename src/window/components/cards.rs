@@ -165,15 +165,17 @@ pub(crate) fn create_artist_card(
     is_large: bool,
 ) -> gtk::Box {
     if is_large {
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        card.add_css_class("track-card");
-        card.add_css_class("large-track");
-        card.set_hexpand(false);
-        card.set_halign(gtk::Align::Center);
-
-        let container = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        container.set_hexpand(false);
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        container.set_hexpand(true);
+        container.set_vexpand(true);
         container.set_halign(gtk::Align::Center);
+        container.set_valign(gtk::Align::Center);
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        content.set_halign(gtk::Align::Center);
+        content.set_valign(gtk::Align::Center);
+        content.add_css_class("track-card");
+        content.add_css_class("large-track");
 
         let art = if let Some(artwork) = artwork {
             match artwork {
@@ -230,18 +232,18 @@ pub(crate) fn create_artist_card(
         labels.append(&name_label);
         labels.append(&type_label);
 
-        container.append(&art);
-        container.append(&labels);
-        card.append(&container);
+        content.append(&art);
+        content.append(&labels);
 
         let artist_name = name.to_string();
         let click_controller = gtk::GestureClick::new();
         click_controller.connect_released(move |_, _, _, _| {
             println!("Clicked on artist: '{}'", artist_name);
         });
-        card.add_controller(click_controller);
+        content.add_controller(click_controller);
 
-        card
+        container.append(&content);
+        container
     } else {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 8);
         card.add_css_class("artist-card");
@@ -300,15 +302,17 @@ pub(crate) fn create_album_card(
     is_large: bool,
 ) -> gtk::Box {
     if is_large {
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        card.add_css_class("track-card");
-        card.add_css_class("large-track");
-        card.set_hexpand(false);
-        card.set_halign(gtk::Align::Center);
-
-        let container = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        container.set_hexpand(false);
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        container.set_hexpand(true);
+        container.set_vexpand(true);
         container.set_halign(gtk::Align::Center);
+        container.set_valign(gtk::Align::Center);
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        content.set_halign(gtk::Align::Center);
+        content.set_valign(gtk::Align::Center);
+        content.add_css_class("track-card");
+        content.add_css_class("large-track");
 
         let art = if let Some(artwork) = artwork {
             match artwork {
@@ -365,18 +369,18 @@ pub(crate) fn create_album_card(
         labels.append(&title_label);
         labels.append(&type_label);
 
-        container.append(&art);
-        container.append(&labels);
-        card.append(&container);
+        content.append(&art);
+        content.append(&labels);
 
         let album_info = (title.to_string(), artist.to_string());
         let click_controller = gtk::GestureClick::new();
         click_controller.connect_released(move |_, _, _, _| {
             println!("Clicked on album: '{}' by '{}'", album_info.0, album_info.1);
         });
-        card.add_controller(click_controller);
+        content.add_controller(click_controller);
 
-        card
+        container.append(&content);
+        container
     } else {
         let card = gtk::Box::new(gtk::Orientation::Vertical, 8);
         card.add_css_class("album-card");
