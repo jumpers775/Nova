@@ -5,7 +5,7 @@ blueprints = custom_target(
   'blueprints',
   input: files(
     'gtk/help-overlay.blp',
-    'window.blp',
+    'window/window.blp',
   ),
   output: '.',
   command: [

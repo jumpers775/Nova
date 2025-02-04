@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Default, gtk::CompositeTemplate)]
-#[template(resource = "/com/lucamignatti/nova/window.ui")]
+#[template(resource = "/com/lucamignatti/nova/window/window.ui")]
 pub struct NovaWindow {
     // Template widgets
     #[template_child]
