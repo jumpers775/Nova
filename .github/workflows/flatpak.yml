@@ -28,7 +28,7 @@ jobs:
         uses: docker/setup-qemu-action@v2
         with:
           platforms: arm64
-      - uses: jochumdev/flatpak-github-actions/flatpak-builder@v6
+      - uses: jochumdev/flatpak-github-actions/flatpak-builder@builder-update-deps
         with:
           bundle: nova.flatpak
           manifest-path: com.lucamignatti.nova.json
