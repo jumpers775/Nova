@@ -1,6 +1,10 @@
+use super::models::{SearchResults, SearchWeights};
+use crate::services::PlayableItem;
 use async_trait::async_trait;
+use chrono::Utc;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -51,47 +55,57 @@ impl LocalMusicProvider {
         None
     }
 
-    fn calculate_match_score(
-        name: &str,
-        artist: Option<&str>,
-        album: Option<&str>,
-        query: &str,
-    ) -> i32 {
-        let mut score = 0;
+    fn score_artist_match(&self, artist_name: &str, query: &str) -> f32 {
+        let matcher = SkimMatcherV2::default().ignore_case().use_cache(true);
         let query = query.to_lowercase();
-        let name = name.to_lowercase();
+        let mut score = 0.0;
 
-        // Score for name/title match
-        if name == query {
-            score += 300; // Exact match
-        } else if name.starts_with(&query) {
-            score += 200; // Starts with query
-        } else if name.contains(&query) {
-            score += 100; // Contains query
+        // Direct name matching
+        if artist_name.to_lowercase() == query {
+            score += 1000.0;
         }
 
-        // Score for artist match if provided
-        if let Some(artist) = artist {
-            let artist = artist.to_lowercase();
-            if artist == query {
-                score += 200;
-            } else if artist.starts_with(&query) {
-                score += 150;
-            } else if artist.contains(&query) {
-                score += 75;
-            }
+        // Fuzzy matching on name
+        if let Some(name_score) = matcher.fuzzy_match(artist_name, &query) {
+            score += name_score as f32 * 3.0;
         }
 
-        // Score for album match if provided
-        if let Some(album) = album {
-            let album = album.to_lowercase();
-            if album == query {
-                score += 150;
-            } else if album.starts_with(&query) {
-                score += 100;
-            } else if album.contains(&query) {
-                score += 50;
-            }
+        // Contains matching
+        if artist_name.to_lowercase().contains(&query) {
+            score += 500.0;
+        }
+
+        score
+    }
+
+    // Helper method for scoring album matches
+    fn score_album_match(&self, album: &str, artist: &str, query: &str) -> f32 {
+        let matcher = SkimMatcherV2::default().ignore_case().use_cache(true);
+        let query = query.to_lowercase();
+        let mut score = 0.0;
+
+        // Direct matches
+        if album.to_lowercase() == query {
+            score += 1000.0;
+        }
+        if artist.to_lowercase() == query {
+            score += 500.0;
+        }
+
+        // Fuzzy matching
+        if let Some(album_score) = matcher.fuzzy_match(album, &query) {
+            score += album_score as f32 * 3.0;
+        }
+        if let Some(artist_score) = matcher.fuzzy_match(artist, &query) {
+            score += artist_score as f32 * 2.0;
+        }
+
+        // Contains matching
+        if album.to_lowercase().contains(&query) {
+            score += 300.0;
+        }
+        if artist.to_lowercase().contains(&query) {
+            score += 200.0;
         }
 
         score
@@ -100,7 +114,7 @@ impl LocalMusicProvider {
 
 #[async_trait]
 impl MusicProvider for LocalMusicProvider {
-    async fn get_tracks(&self) -> Result<Vec<Track>, Box<dyn Error>> {
+    async fn get_tracks(&self) -> Result<Vec<Track>, Box<dyn Error + Send + Sync>> {
         let mut found_tracks: Vec<Track> = Vec::new();
         if self.music_dir.is_dir() {
             let music_files = scanner::FileScanner::scan_directory(&self.music_dir)?;
@@ -231,12 +245,48 @@ impl MusicProvider for LocalMusicProvider {
         Ok(found_tracks)
     }
 
-    async fn get_albums(&self) -> Result<Vec<Album>, Box<dyn Error>> {
-        todo!()
+    async fn get_artists(&self) -> Result<Vec<Artist>, Box<dyn Error + Send + Sync>> {
+        let all_tracks = self.get_tracks().await?;
+        let mut artists = std::collections::HashMap::new();
+
+        for track in all_tracks {
+            if !artists.contains_key(&track.artist) {
+                artists.insert(
+                    track.artist.clone(),
+                    Artist {
+                        id: track.artist.clone(),
+                        name: track.artist,
+                        albums: Vec::new(),
+                    },
+                );
+            }
+        }
+
+        Ok(artists.into_values().collect())
     }
 
-    async fn get_artists(&self) -> Result<Vec<Artist>, Box<dyn Error>> {
-        todo!()
+    async fn get_albums(&self) -> Result<Vec<Album>, Box<dyn Error + Send + Sync>> {
+        let all_tracks = self.get_tracks().await?;
+        let mut albums = std::collections::HashMap::new();
+
+        for track in all_tracks {
+            let album_key = format!("{}-{}", track.album, track.artist);
+            if !albums.contains_key(&album_key) {
+                albums.insert(
+                    album_key.clone(),
+                    Album {
+                        id: album_key,
+                        title: track.album,
+                        artist: track.artist,
+                        year: track.release_year,
+                        art_url: None,
+                        tracks: Vec::new(),
+                    },
+                );
+            }
+        }
+
+        Ok(albums.into_values().collect())
     }
 
     async fn search(
@@ -244,7 +294,16 @@ impl MusicProvider for LocalMusicProvider {
         query: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<Track>, Box<dyn Error>> {
+    ) -> Result<Vec<Track>, Box<dyn Error + Send + Sync>> {
+        self.search_tracks(query, limit, offset).await
+    }
+
+    async fn search_tracks(
+        &self,
+        query: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Track>, Box<dyn Error + Send + Sync>> {
         let all_tracks = self.get_tracks().await?;
         let query = query.to_lowercase();
         let query_words: Vec<&str> = query.split_whitespace().collect();
@@ -317,5 +376,119 @@ impl MusicProvider for LocalMusicProvider {
             .take(limit)
             .map(|(_, track)| track)
             .collect())
+    }
+
+    async fn search_albums(
+        &self,
+        query: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Album>, Box<dyn Error + Send + Sync>> {
+        let all_tracks = self.get_tracks().await?;
+
+        let mut albums: std::collections::HashMap<String, Album> = std::collections::HashMap::new();
+        for track in all_tracks {
+            let album_key = format!("{}-{}", track.album, track.artist);
+            if !albums.contains_key(&album_key) {
+                albums.insert(
+                    album_key.clone(),
+                    Album {
+                        id: album_key,
+                        title: track.album,
+                        artist: track.artist,
+                        year: track.release_year,
+                        art_url: None,
+                        tracks: Vec::new(),
+                    },
+                );
+            }
+        }
+
+        let mut scored_albums: Vec<(f32, Album)> = albums
+            .into_iter()
+            .map(|(_, album)| {
+                let score = self.score_album_match(&album.title, &album.artist, query);
+                (score, album)
+            })
+            .filter(|(score, _)| *score > 0.0)
+            .collect();
+
+        scored_albums.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(scored_albums
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, album)| album)
+            .collect())
+    }
+
+    async fn search_artists(
+        &self,
+        query: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Artist>, Box<dyn Error + Send + Sync>> {
+        let all_tracks = self.get_tracks().await?;
+
+        let mut artists: std::collections::HashMap<String, Artist> =
+            std::collections::HashMap::new();
+        for track in all_tracks {
+            if !artists.contains_key(&track.artist) {
+                artists.insert(
+                    track.artist.clone(),
+                    Artist {
+                        id: track.artist.clone(),
+                        name: track.artist,
+                        albums: Vec::new(),
+                    },
+                );
+            }
+        }
+
+        let mut scored_artists: Vec<(f32, Artist)> = artists
+            .into_iter()
+            .map(|(_, artist)| {
+                let score = self.score_artist_match(&artist.name, query);
+                (score, artist)
+            })
+            .filter(|(score, _)| *score > 0.0)
+            .collect();
+
+        scored_artists.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(scored_artists
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, artist)| artist)
+            .collect())
+    }
+
+    async fn search_all(
+        &self,
+        query: &str,
+        weights: &SearchWeights,
+        limit: usize,
+        offset: usize,
+    ) -> Result<SearchResults, Box<dyn Error + Send + Sync>> {
+        let (tracks, albums, artists) = futures::join!(
+            self.search_tracks(query, limit, offset),
+            self.search_albums(query, limit, offset),
+            self.search_artists(query, limit, offset),
+        );
+
+        Ok(SearchResults {
+            tracks: tracks?
+                .into_iter()
+                .map(|track| PlayableItem {
+                    track,
+                    provider: "local".to_string(),
+                    added_at: chrono::Utc::now(),
+                })
+                .collect(),
+            albums: albums?,
+            artists: artists?,
+        })
     }
 }

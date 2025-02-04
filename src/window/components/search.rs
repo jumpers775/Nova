@@ -1,3 +1,4 @@
+use crate::services::models::SearchResults;
 use crate::services::PlayableItem;
 use crate::window::components::cards::{create_album_card, create_artist_card, create_track_card};
 use crate::window::imp;
@@ -45,58 +46,28 @@ pub(crate) fn show_loading_state(this: &imp::NovaWindow) {
     this.spinner_container.replace(Some(container));
 }
 
-pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &[PlayableItem], query: &str) {
-    println!("Updating search results with {} items", results.len());
+pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &SearchResults, query: &str) {
+    println!(
+        "Updating search results with {} tracks, {} albums, {} artists",
+        results.tracks.len(),
+        results.albums.len(),
+        results.artists.len()
+    );
 
     if let Some(container) = this.spinner_container.take() {
         container.unparent();
     }
 
-    this.top_result_box.set_visible(true);
-    this.tracks_box.set_visible(true);
-    this.top_result_box.parent().unwrap().set_visible(true);
-    this.tracks_box.parent().unwrap().set_visible(true);
-    this.artists_section.set_visible(!results.is_empty());
-    this.albums_section.set_visible(!results.is_empty());
+    let has_any_results =
+        !results.tracks.is_empty() || !results.albums.is_empty() || !results.artists.is_empty();
 
-    // Sort results by relevance score
-    let mut sorted_results = results.to_vec();
-    sorted_results.sort_by_cached_key(|item| {
-        let title_match = item.track.title.to_lowercase() == query.to_lowercase();
-        let title_contains = item
-            .track
-            .title
-            .to_lowercase()
-            .contains(&query.to_lowercase());
-        let artist_match = item
-            .track
-            .artist
-            .to_lowercase()
-            .contains(&query.to_lowercase());
-        let album_match = item
-            .track
-            .album
-            .to_lowercase()
-            .contains(&query.to_lowercase());
+    if !has_any_results {
+        this.search_stack.set_visible_child_name("no_results_page");
+        return;
+    }
 
-        let mut score = 0;
-
-        // Exact matches get highest priority
-        if title_match {
-            score += 1000;
-        }
-        if title_contains {
-            score += 100;
-        }
-        if artist_match {
-            score += 50;
-        }
-        if album_match {
-            score += 25;
-        }
-
-        -score // Negative for reverse sort (higher scores first)
-    });
+    this.search_stack
+        .set_visible_child_name("search_results_scroll");
 
     // Clear previous results
     if let Some(child) = this.top_result_box.center_widget() {
@@ -112,69 +83,76 @@ pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &[PlayableI
         this.albums_box.remove(&child);
     }
 
-    if sorted_results.is_empty() {
-        this.search_stack.set_visible_child_name("no_results_page");
-        this.artists_section.set_visible(false);
-        this.albums_section.set_visible(false);
-        return;
+    // Make sections visible
+    let top_section = this.top_result_box.parent().unwrap().parent().unwrap();
+    top_section.set_visible(true);
+    let track_section = this.tracks_box.parent().unwrap();
+    track_section.set_visible(true);
+
+    // Always show top result section if we have tracks
+    if !results.tracks.is_empty() {
+        let card = create_track_card(&results.tracks[0].track, true);
+        this.top_result_box.set_center_widget(Some(&card));
+        this.top_result_box.set_visible(true);
+        this.top_result_box.parent().unwrap().set_visible(true);
     }
 
-    // Use HashSet to track unique artists and albums
-    let mut artists = HashSet::new();
-    let mut albums = HashSet::new();
-    let mut top_tracks = Vec::new();
-
-    // Process results in sorted order
-    for result in &sorted_results {
-        // Add to tracks if we haven't hit the limit
-        if top_tracks.len() < 5 {
-            top_tracks.push(result);
+    // Update tracks section (always show if we have tracks)
+    if !results.tracks.is_empty() {
+        for track in results.tracks.iter().take(5) {
+            let card = create_track_card(&track.track, false);
+            this.tracks_box.append(&card);
         }
+        this.tracks_box.set_visible(true);
+    }
 
-        // Add to artists if unique and not unknown
-        if artists.len() < 6
-            && !result.track.artist.eq_ignore_ascii_case("Unknown Artist")
-            && artists.insert(result.track.artist.clone())
-        {
-            let card = create_artist_card(&result.track.artist, Some(&result.track.artwork), false);
+    // Update artists section (filter out Unknown Artist)
+    let filtered_artists: Vec<_> = results
+        .artists
+        .iter()
+        .filter(|artist| artist.name != "Unknown Artist")
+        .collect();
+
+    if !filtered_artists.is_empty() {
+        for artist in filtered_artists.iter().take(6) {
+            // Find matching track for artwork
+            let artist_artwork = results
+                .tracks
+                .iter()
+                .find(|t| t.track.artist == artist.name)
+                .map(|t| &t.track.artwork);
+
+            let card = create_artist_card(&artist.name, artist_artwork, false);
             this.artists_box.append(&card);
         }
+        this.artists_section.set_visible(true);
+    } else {
+        this.artists_section.set_visible(false);
+    }
 
-        // Add to albums if unique and not unknown
-        let album_key = format!("{} - {}", result.track.album, result.track.artist);
-        if albums.len() < 6
-            && !result.track.album.eq_ignore_ascii_case("Unknown Album")
-            && albums.insert(album_key)
-        {
-            let card = create_album_card(
-                &result.track.album,
-                &result.track.artist,
-                Some(&result.track.artwork),
-                false,
-            );
+    // Update albums section (filter out Unknown Album)
+    let filtered_albums: Vec<_> = results
+        .albums
+        .iter()
+        .filter(|album| album.title != "Unknown Album")
+        .collect();
+
+    if !filtered_albums.is_empty() {
+        for album in filtered_albums.iter().take(6) {
+            // Find matching track for artwork
+            let album_artwork = results
+                .tracks
+                .iter()
+                .find(|t| t.track.album == album.title && t.track.artist == album.artist)
+                .map(|t| &t.track.artwork);
+
+            let card = create_album_card(&album.title, &album.artist, album_artwork, false);
             this.albums_box.append(&card);
         }
+        this.albums_section.set_visible(true);
+    } else {
+        this.albums_section.set_visible(false);
     }
-
-    // Update visibility of sections
-    this.artists_section.set_visible(!artists.is_empty());
-    this.albums_section.set_visible(!albums.is_empty());
-
-    // Update top result
-    if let Some(top_result) = top_tracks.first() {
-        let card = create_track_card(&top_result.track, true);
-        this.top_result_box.set_center_widget(Some(&card));
-    }
-
-    // Update tracks
-    for track in top_tracks {
-        let card = create_track_card(&track.track, false);
-        this.tracks_box.append(&card);
-    }
-
-    // Show results
-    this.search_stack
-        .set_visible_child_name("search_results_scroll");
 }
 
 pub(crate) fn create_loading_indicator() -> gtk::Box {

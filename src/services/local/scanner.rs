@@ -5,7 +5,9 @@ use walkdir::WalkDir;
 pub struct FileScanner;
 
 impl FileScanner {
-    pub fn scan_directory(path: &Path) -> Result<Vec<std::path::PathBuf>, Box<dyn Error>> {
+    pub fn scan_directory(
+        path: &Path,
+    ) -> Result<Vec<std::path::PathBuf>, Box<dyn Error + Send + Sync>> {
         let mut music_files = Vec::new();
 
         for entry in WalkDir::new(path)

@@ -87,3 +87,40 @@ pub struct Artist {
     pub name: String,
     pub albums: Vec<String>, // Album IDs
 }
+
+#[derive(Debug, Clone)]
+pub struct SearchResults {
+    pub tracks: Vec<PlayableItem>,
+    pub albums: Vec<Album>,
+    pub artists: Vec<Artist>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchWeights {
+    pub track_weight: f32,
+    pub album_weight: f32,
+    pub artist_weight: f32,
+}
+
+impl Default for SearchWeights {
+    fn default() -> Self {
+        Self {
+            track_weight: 1.0,
+            album_weight: 1.0,
+            artist_weight: 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScoredResult {
+    pub score: f32,
+    pub result_type: SearchResultType,
+}
+
+#[derive(Debug, Clone)]
+pub enum SearchResultType {
+    Track(PlayableItem),
+    Album(Album),
+    Artist(Artist),
+}

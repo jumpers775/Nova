@@ -1,6 +1,7 @@
 use super::error::ServiceError;
 use super::models::{Album, Artist, PlayableItem, Track};
 use super::traits::MusicProvider;
+use crate::services::models::{SearchResults, SearchWeights};
 use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
@@ -50,20 +51,31 @@ impl ServiceManager {
         Ok(all_tracks)
     }
 
-    pub async fn search_all(&self, query: &str) -> Result<Vec<PlayableItem>, ServiceError> {
-        const RESULTS_PER_PROVIDER: usize = 20;
-        let offset = 0;
-
-        let mut all_results = Vec::new();
+    pub async fn search_all(
+        &self,
+        query: &str,
+        weights: Option<SearchWeights>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<SearchResults, ServiceError> {
+        let weights = weights.unwrap_or_default();
         let providers = self.providers.read().await;
+        let mut all_results = SearchResults {
+            tracks: Vec::new(),
+            albums: Vec::new(),
+            artists: Vec::new(),
+        };
 
         // Query all providers concurrently
         let mut futures = Vec::new();
         for (provider_name, provider) in providers.iter() {
             let provider_name = provider_name.clone();
+            let query = query.to_string();
+            let weights = weights.clone();
+
             let future = async move {
-                match provider.search(query, RESULTS_PER_PROVIDER, offset).await {
-                    Ok(tracks) => Some((provider_name, tracks)),
+                match provider.search_all(&query, &weights, limit, offset).await {
+                    Ok(results) => Some((provider_name, results)),
                     Err(e) => {
                         eprintln!("Error searching in {}: {}", provider_name, e);
                         None
@@ -75,12 +87,10 @@ impl ServiceManager {
 
         // Wait for all searches to complete
         for result in futures::future::join_all(futures).await {
-            if let Some((provider_name, tracks)) = result {
-                all_results.extend(tracks.into_iter().map(|track| PlayableItem {
-                    track,
-                    provider: provider_name.clone(),
-                    added_at: Utc::now(),
-                }));
+            if let Some((provider_name, results)) = result {
+                all_results.tracks.extend(results.tracks);
+                all_results.albums.extend(results.albums);
+                all_results.artists.extend(results.artists);
             }
         }
 

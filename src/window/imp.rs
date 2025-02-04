@@ -246,27 +246,8 @@ impl NovaWindow {
                     return;
                 }
 
-                // Check if we have any existing visible results
-                let has_existing_results = this.top_result_box.center_widget().is_some()
-                    || this.tracks_box.first_child().is_some()
-                    || this.artists_box.first_child().is_some()
-                    || this.albums_box.first_child().is_some();
-
-                // Check if we're currently on the empty search page
-                let is_empty_page = this
-                    .search_stack
-                    .visible_child_name()
-                    .map_or(true, |name| name == "empty_search_page");
-
-                // Show loading spinner if needed
-                if !has_existing_results || is_empty_page {
-                    this.search_stack
-                        .set_visible_child_name("search_results_scroll");
-                    show_loading_state(this);
-                } else {
-                    this.search_stack
-                        .set_visible_child_name("search_results_scroll");
-                }
+                // Show loading state
+                show_loading_state(this);
 
                 // Cancel previous search if running
                 if let Some(handle) = this.current_search_handle.take() {
@@ -290,14 +271,13 @@ impl NovaWindow {
 
                         // Perform search
                         if let Some(manager) = this.service_manager.borrow().as_ref() {
-                            match manager.search_all(&query).await {
+                            match manager.search_all(&query, None, 20, 0).await {
                                 Ok(results) => {
                                     // Verify search is still relevant
                                     if this.search_version.get() != current_version {
                                         return;
                                     }
 
-                                    let results: Vec<_> = results.into_iter().collect();
                                     let obj_weak = obj_weak.clone();
                                     glib::MainContext::default().spawn_local(async move {
                                         if let Some(obj) = obj_weak.upgrade() {
@@ -309,14 +289,7 @@ impl NovaWindow {
                                 Err(e) => {
                                     eprintln!("Search error: {}", e);
                                     if this.search_version.get() == current_version {
-                                        let obj_weak = obj_weak.clone();
-                                        glib::MainContext::default().spawn_local(async move {
-                                            if let Some(obj) = obj_weak.upgrade() {
-                                                let this = obj.imp();
-                                                this.search_stack
-                                                    .set_visible_child_name("no_results_page");
-                                            }
-                                        });
+                                        this.search_stack.set_visible_child_name("no_results_page");
                                     }
                                 }
                             }
