@@ -1,11 +1,14 @@
 use crossbeam_channel::{bounded, Sender};
 use notify::{
-    Event, EventKind, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher,
+    event::{CreateKind, ModifyKind, RemoveKind},
+    Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher,
 };
-use std::path::PathBuf;
+use parking_lot::RwLock;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub enum FileEvent {
@@ -25,35 +28,44 @@ impl FileWatcher {
         let (tx, rx) = bounded(100);
         let tx = Arc::new(tx);
 
+        println!("Initializing file watcher for path: {:?}", path);
+
         let tx_clone = tx.clone();
         let mut watcher = notify::recommended_watcher(move |res: NotifyResult<Event>| {
             if let Ok(event) = res {
-                match event.kind {
-                    EventKind::Create(_) => {
-                        for path in event.paths {
+                println!("Raw watcher event: {:?}", event);
+
+                for path in event.paths {
+                    match event.kind {
+                        EventKind::Create(_) => {
                             if path.exists() {
                                 let _ = tx_clone.send(FileEvent::Created(path));
                             }
                         }
-                    }
-                    EventKind::Modify(_) => {
-                        for path in event.paths {
+                        EventKind::Modify(_) => {
                             if path.exists() {
                                 let _ = tx_clone.send(FileEvent::Modified(path));
+                            } else {
+                                let _ = tx_clone.send(FileEvent::Removed(path));
+                            }
+                        }
+                        EventKind::Remove(_) => {
+                            let _ = tx_clone.send(FileEvent::Removed(path));
+                        }
+                        _ => {
+                            if !path.exists() && path.extension().is_some() {
+                                let _ = tx_clone.send(FileEvent::Removed(path));
                             }
                         }
                     }
-                    EventKind::Remove(_) => {
-                        for path in event.paths {
-                            let _ = tx_clone.send(FileEvent::Removed(path));
-                        }
-                    }
-                    _ => {} // Ignore other events
                 }
+            } else if let Err(e) = res {
+                eprintln!("Watch error: {:?}", e);
             }
         })?;
 
         watcher.watch(&path, RecursiveMode::Recursive)?;
+        println!("File watcher initialized successfully");
 
         Ok(Self {
             _watcher: watcher,

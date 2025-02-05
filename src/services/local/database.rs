@@ -962,10 +962,11 @@ impl Database {
     }
 
     pub fn remove_track_by_path(&self, path: &Path) -> Result<(), Box<dyn Error + Send + Sync>> {
+        println!("Attempting to remove track at path: {:?}", path);
         let mut conn = self.pool.get()?;
         let tx = conn.transaction()?;
 
-        // Get track info before deletion
+        // Get track info before deletion for cleanup
         let track_info: Option<(String, String)> = tx
             .query_row(
                 "SELECT artist, album FROM tracks WHERE file_path = ?",
@@ -975,13 +976,17 @@ impl Database {
             .optional()?;
 
         // Delete the track
-        tx.execute(
+        let rows_affected = tx.execute(
             "DELETE FROM tracks WHERE file_path = ?",
             params![path.to_str().unwrap_or_default()],
         )?;
 
+        println!("Deleted {} track entries", rows_affected);
+
         // If we found track info, clean up orphaned albums and artists
         if let Some((artist, album)) = track_info {
+            println!("Checking for orphaned album: {} by {}", album, artist);
+
             // Check if this was the last track from this album
             let album_track_count: i64 = tx.query_row(
                 "SELECT COUNT(*) FROM tracks WHERE album = ? AND artist = ?",
@@ -990,11 +995,12 @@ impl Database {
             )?;
 
             if album_track_count == 0 {
-                // Delete the album if no tracks remain
-                tx.execute(
+                println!("Removing orphaned album: {}", album);
+                let removed = tx.execute(
                     "DELETE FROM albums WHERE title = ? AND artist = ?",
                     params![album, artist],
                 )?;
+                println!("Removed {} album entries", removed);
             }
 
             // Check if this was the last track from this artist
@@ -1005,13 +1011,14 @@ impl Database {
             )?;
 
             if artist_track_count == 0 {
-                // Delete the artist if no tracks remain
-                tx.execute("DELETE FROM artists WHERE name = ?", params![artist])?;
+                println!("Removing orphaned artist: {}", artist);
+                let removed = tx.execute("DELETE FROM artists WHERE name = ?", params![artist])?;
+                println!("Removed {} artist entries", removed);
             }
         }
 
         tx.commit()?;
-        println!("Successfully removed track at path: {:?}", path);
+        println!("Successfully removed track and cleaned up orphaned entries");
         Ok(())
     }
 

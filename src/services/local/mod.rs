@@ -41,98 +41,87 @@ pub struct LocalMusicProvider {
 }
 
 impl LocalMusicProvider {
-    pub fn new(music_dir: PathBuf) -> Result<Self, Box<dyn Error + Send + Sync>> {
+    pub async fn new(music_dir: PathBuf) -> Result<Self, Box<dyn Error + Send + Sync>> {
         println!(
             "Initializing LocalMusicProvider with directory: {:?}",
             music_dir
         );
 
-        println!("Creating persistent database");
+        // Create database and watcher
         let db = Database::new()?;
         let watcher = FileWatcher::new(music_dir.clone())?;
 
         let db = Arc::new(RwLock::new(db));
         let watcher = Arc::new(RwLock::new(watcher));
 
-        // Create provider first
         let provider = Self {
             music_dir,
             db: db.clone(),
-            watcher,
+            watcher: watcher.clone(),
         };
 
-        // Scan files sequentially
-        println!("Starting music directory scan...");
-        let files = FileScanner::scan_directory(&provider.music_dir)?;
-        println!("Found {} music files", files.len());
+        // Start watching for changes
+        let db_clone = db.clone();
+        let watcher_clone = watcher.clone();
 
-        // Process files in very small batches
-        const CHUNK_SIZE: usize = 5; // Reduced batch size
-
-        // Scope the database lock
-        {
-            let db = provider.db.blocking_read();
-
-            for chunk in files.chunks(CHUNK_SIZE) {
-                let mut tracks = Vec::with_capacity(chunk.len());
-
-                // Process files sequentially
-                for file in chunk {
-                    match FileScanner::process_file(file) {
-                        Ok(track) => {
-                            println!(
-                                "Successfully processed file: {} - {}",
-                                track.title, track.artist
-                            );
-                            tracks.push(track);
+        println!("Starting file watch loop");
+        tokio::spawn(async move {
+            println!("Starting file watch loop");
+            loop {
+                let watcher_guard = watcher_clone.read().await;
+                if let Some(event) = watcher_guard.try_receive() {
+                    match &event {
+                        FileEvent::Created(path) | FileEvent::Modified(path) => {
+                            if FileScanner::is_music_file_public(path) {
+                                let mut db = db_clone.write().await;
+                                if let Ok(track) = FileScanner::process_file(path) {
+                                    if let Err(e) = db.insert_track(&track) {
+                                        eprintln!("Error inserting track: {}", e);
+                                    }
+                                }
+                            }
                         }
-                        Err(e) => {
-                            eprintln!("Error processing file {:?}: {}", file, e);
-                        }
-                    }
-                }
-
-                // Insert the batch with increased timeout and retries
-                const MAX_RETRIES: u32 = 5;
-                let mut retry_count = 0;
-                let mut last_error = None;
-
-                while retry_count < MAX_RETRIES {
-                    match db.batch_insert_tracks(&tracks) {
-                        Ok(_) => {
-                            println!("Successfully inserted batch of {} tracks", tracks.len());
-                            break;
-                        }
-                        Err(e) => {
-                            retry_count += 1;
-                            last_error = Some(e);
-                            if retry_count < MAX_RETRIES {
-                                let sleep_duration =
-                                    std::time::Duration::from_millis(500 * retry_count as u64);
-                                println!(
-                                    "Retrying batch insert (attempt {}/{}) after {:?}",
-                                    retry_count + 1,
-                                    MAX_RETRIES,
-                                    sleep_duration
-                                );
-                                std::thread::sleep(sleep_duration);
+                        FileEvent::Removed(path) => {
+                            if path.extension().map_or(false, |ext| {
+                                matches!(
+                                    ext.to_str().unwrap_or("").to_lowercase().as_str(),
+                                    "mp3" | "flac" | "m4a" | "ogg" | "wav"
+                                )
+                            }) {
+                                let mut db = db_clone.write().await;
+                                if let Err(e) = db.remove_track_by_path(path) {
+                                    eprintln!("Error removing track: {}", e);
+                                }
                             }
                         }
                     }
                 }
 
-                if let Some(e) = last_error {
-                    if retry_count >= MAX_RETRIES {
-                        eprintln!(
-                            "Failed to insert batch after {} retries: {}",
-                            MAX_RETRIES, e
-                        );
+                drop(watcher_guard);
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+        });
+
+        // Initial scan of existing files
+        println!("Starting music directory scan...");
+        let files = FileScanner::scan_directory(&provider.music_dir)?;
+        println!("Found {} music files", files.len());
+
+        // Process files in batches
+        {
+            let db = provider.db.read().await;
+            for chunk in files.chunks(5) {
+                let mut tracks = Vec::with_capacity(chunk.len());
+                for file in chunk {
+                    if let Ok(track) = FileScanner::process_file(file) {
+                        tracks.push(track);
                     }
                 }
+                if let Err(e) = db.batch_insert_tracks(&tracks) {
+                    eprintln!("Error inserting tracks batch: {}", e);
+                }
             }
-        } // db lock is released here
-
-        println!("Successfully processed all tracks");
+        }
 
         Ok(provider)
     }

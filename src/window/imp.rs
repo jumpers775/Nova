@@ -136,21 +136,8 @@ impl NovaWindow {
                 PathBuf::from(&format!("{}/Music", std::env::var("HOME").unwrap()))
             });
 
-            println!("Setting up music directory: {:?}", music_dir);
-            println!("Directory exists: {}", music_dir.exists());
-            if music_dir.exists() {
-                println!("Directory contents:");
-                if let Ok(entries) = std::fs::read_dir(&music_dir) {
-                    for entry in entries {
-                        if let Ok(entry) = entry {
-                            println!("  {:?}", entry.path());
-                        }
-                    }
-                }
-            }
-
             glib::MainContext::default().spawn_local(async move {
-                match LocalMusicProvider::new(music_dir) {
+                match LocalMusicProvider::new(music_dir).await {
                     Ok(provider) => {
                         println!("LocalMusicProvider initialized, registering...");
                         manager_clone
