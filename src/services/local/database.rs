@@ -1,7 +1,7 @@
 use crate::services::models::{Album, Artist, Artwork, ArtworkSource, PlaybackSource, Track};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use sha1::{Digest, Sha1};
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -14,33 +14,10 @@ pub struct Database {
 
 impl Database {
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Get application data directory
-        let data_dir = dirs::data_dir()
-            .ok_or("Could not find data directory")?
-            .join("nova");
+        println!("Initializing in-memory database");
 
-        // Create directory if it doesn't exist
-        std::fs::create_dir_all(&data_dir)?;
-
-        let db_path = data_dir.join("library.db");
-        println!("Using database at: {:?}", db_path);
-
-        // Initialize the database with optimized settings
-        {
-            let conn = rusqlite::Connection::open(&db_path)?;
-            conn.execute_batch(
-                "PRAGMA journal_mode = WAL;
-                 PRAGMA synchronous = NORMAL;
-                 PRAGMA temp_store = MEMORY;
-                 PRAGMA mmap_size = 30000000000;
-                 PRAGMA page_size = 4096;
-                 PRAGMA cache_size = -2000;
-                 PRAGMA busy_timeout = 60000;",
-            )?;
-        }
-
-        // Create connection pool with increased timeout
-        let manager = SqliteConnectionManager::file(&db_path)
+        // Initialize in-memory database
+        let manager = SqliteConnectionManager::memory()
             .with_flags(
                 rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
                     | rusqlite::OpenFlags::SQLITE_OPEN_CREATE
@@ -48,8 +25,10 @@ impl Database {
             )
             .with_init(|conn| {
                 conn.execute_batch(
-                    "PRAGMA journal_mode = WAL;
-                     PRAGMA synchronous = NORMAL;
+                    "PRAGMA journal_mode = OFF;  -- No need for journaling in memory
+                     PRAGMA synchronous = OFF;   -- No need for fsync
+                     PRAGMA temp_store = MEMORY;
+                     PRAGMA cache_size = 10000;  -- Increased cache size for memory
                      PRAGMA busy_timeout = 60000;",
                 )?;
                 Ok(())
@@ -125,7 +104,7 @@ impl Database {
         // Now initialize artwork
         db.initialize_artwork()?;
 
-        println!("Database initialized successfully");
+        println!("In-memory database initialized successfully");
         Ok(db)
     }
 
@@ -926,10 +905,73 @@ impl Database {
         let mut conn = self.pool.get()?;
         let tx = conn.transaction()?;
 
+        // Get track info before deletion
+        let track_info: Option<(String, String)> = tx
+            .query_row(
+                "SELECT artist, album FROM tracks WHERE file_path = ?",
+                params![path.to_str().unwrap_or_default()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+
+        // Delete the track
         tx.execute(
             "DELETE FROM tracks WHERE file_path = ?",
             params![path.to_str().unwrap_or_default()],
         )?;
+
+        // If we found track info, clean up orphaned albums and artists
+        if let Some((artist, album)) = track_info {
+            // Check if this was the last track from this album
+            let album_track_count: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM tracks WHERE album = ? AND artist = ?",
+                params![album, artist],
+                |row| row.get(0),
+            )?;
+
+            if album_track_count == 0 {
+                // Delete the album if no tracks remain
+                tx.execute(
+                    "DELETE FROM albums WHERE title = ? AND artist = ?",
+                    params![album, artist],
+                )?;
+            }
+
+            // Check if this was the last track from this artist
+            let artist_track_count: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM tracks WHERE artist = ?",
+                params![artist],
+                |row| row.get(0),
+            )?;
+
+            if artist_track_count == 0 {
+                // Delete the artist if no tracks remain
+                tx.execute("DELETE FROM artists WHERE name = ?", params![artist])?;
+            }
+        }
+
+        tx.commit()?;
+        println!("Successfully removed track at path: {:?}", path);
+        Ok(())
+    }
+
+    pub fn cleanup_database(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut conn = self.pool.get()?;
+        let tx = conn.transaction()?;
+
+        // Remove tracks with non-existent files
+        let tracks: Vec<(String,)> = tx
+            .prepare("SELECT file_path FROM tracks")?
+            .query_map([], |row| Ok((row.get(0)?,)))?
+            .filter_map(Result::ok)
+            .collect();
+
+        for (path,) in tracks {
+            if !std::path::Path::new(&path).exists() {
+                println!("Removing track with missing file: {}", path);
+                self.remove_track_by_path(std::path::Path::new(&path))?;
+            }
+        }
 
         tx.commit()?;
         Ok(())

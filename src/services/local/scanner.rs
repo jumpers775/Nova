@@ -42,6 +42,14 @@ impl FileScanner {
     }
 
     pub fn process_file(path: &Path) -> Result<Track, Box<dyn Error + Send + Sync>> {
+        // Check if file exists first
+        if !path.exists() {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("File not found: {:?}", path),
+            )));
+        }
+
         // Generate a unique ID for the track based on its path
         let mut hasher = Sha1::new();
         hasher.update(path.to_str().unwrap_or_default().as_bytes());

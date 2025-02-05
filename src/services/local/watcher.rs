@@ -31,12 +31,16 @@ impl FileWatcher {
                 match event.kind {
                     EventKind::Create(_) => {
                         for path in event.paths {
-                            let _ = tx_clone.send(FileEvent::Created(path));
+                            if path.exists() {
+                                let _ = tx_clone.send(FileEvent::Created(path));
+                            }
                         }
                     }
                     EventKind::Modify(_) => {
                         for path in event.paths {
-                            let _ = tx_clone.send(FileEvent::Modified(path));
+                            if path.exists() {
+                                let _ = tx_clone.send(FileEvent::Modified(path));
+                            }
                         }
                     }
                     EventKind::Remove(_) => {

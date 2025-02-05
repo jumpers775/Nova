@@ -21,7 +21,7 @@ use notify;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rayon::prelude::*;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -120,6 +120,19 @@ impl LocalMusicProvider {
                         // No events to process, sleep for a longer time
                         glib::timeout_future(Duration::from_millis(500)).await;
                     }
+                }
+            }
+        });
+
+        // Add periodic cleanup
+        let provider_clone = provider.clone();
+        glib::MainContext::default().spawn_local(async move {
+            loop {
+                // Run cleanup every hour
+                glib::timeout_future(Duration::from_secs(3600)).await;
+                let db = provider_clone.db.write().await;
+                if let Err(e) = db.cleanup_database() {
+                    eprintln!("Error during database cleanup: {}", e);
                 }
             }
         });
