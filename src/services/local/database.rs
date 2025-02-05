@@ -568,7 +568,10 @@ impl Database {
     }
 
     fn ensure_artist(&self, artist: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut conn = self.pool.get()?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         let tx = conn.transaction()?;
 
         // Create SHA1 hash properly
@@ -592,10 +595,12 @@ impl Database {
         artist: &str,
         year: Option<u32>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut conn = self.pool.get()?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         let tx = conn.transaction()?;
 
-        // Create SHA1 hash in Rust
         let mut hasher = Sha1::new();
         hasher.update(format!("{}:{}", title, artist).as_bytes());
         let album_id = format!("{:x}", hasher.finalize());
@@ -781,63 +786,118 @@ impl Database {
         &self,
         tracks: &[Track],
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut conn = self.pool.get()?;
-        conn.execute_batch("PRAGMA busy_timeout = 60000;")?;
-        let tx = conn.transaction()?;
+        let mut conn = self
+            .pool
+            .get()
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
-        for track in tracks {
-            // First ensure artist exists
-            self.ensure_artist(&track.artist)?;
+        // Increase timeout significantly
+        conn.execute_batch("PRAGMA busy_timeout = 300000;")?; // 5 minutes
 
-            // Then ensure album exists
-            self.ensure_album(&track.album, &track.artist, track.release_year)?;
+        const MAX_RETRIES: u32 = 5; // Increased retries
+        let mut retry_count = 0;
 
-            // Insert track
-            tx.execute(
-                "INSERT OR REPLACE INTO tracks (
-                    id, title, artist, album, duration, track_number, disc_number,
-                    release_year, genre, file_path, file_format, file_size,
-                    artwork_data, artwork_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                params![
-                    track.id,
-                    track.title,
-                    track.artist,
-                    track.album,
-                    track.duration,
-                    track.track_number,
-                    track.disc_number,
-                    track.release_year,
-                    track.genre,
-                    match &track.source {
-                        PlaybackSource::Local { path, .. } => path.to_str().unwrap_or_default(),
-                        _ => "",
-                    },
-                    match &track.source {
-                        PlaybackSource::Local { file_format, .. } => file_format,
-                        _ => "",
-                    },
-                    match &track.source {
-                        PlaybackSource::Local { file_size, .. } => file_size,
-                        _ => &0,
-                    },
-                    match &track.artwork {
-                        Artwork {
-                            thumbnail: Some(data),
-                            ..
-                        } => Some(data as &[u8]),
-                        _ => None,
-                    },
-                    match &track.artwork.full_art {
-                        ArtworkSource::Local { path } => path.to_str().unwrap_or_default(),
-                        _ => "",
-                    },
-                ],
-            )?;
+        while retry_count < MAX_RETRIES {
+            let tx = conn.transaction()?;
+            let mut success = true;
+
+            // Process in a single transaction
+            for track in tracks {
+                // Create artist ID
+                let mut hasher = Sha1::new();
+                hasher.update(track.artist.as_bytes());
+                let artist_id = format!("{:x}", hasher.finalize());
+
+                // Insert artist
+                tx.execute(
+                    "INSERT OR IGNORE INTO artists (id, name, artwork_data, artwork_path)
+                     VALUES (?, ?, NULL, NULL)",
+                    params![artist_id, track.artist],
+                )?;
+
+                // Create album ID
+                let mut hasher = Sha1::new();
+                hasher.update(format!("{}:{}", track.album, track.artist).as_bytes());
+                let album_id = format!("{:x}", hasher.finalize());
+
+                // Insert album
+                tx.execute(
+                    "INSERT OR IGNORE INTO albums (id, title, artist, year, artwork_data, artwork_path)
+                     VALUES (?, ?, ?, ?, NULL, NULL)",
+                    params![album_id, track.album, track.artist, track.release_year],
+                )?;
+
+                // Insert track
+                if let Err(e) = tx.execute(
+                    "INSERT OR REPLACE INTO tracks (
+                        id, title, artist, album, duration, track_number, disc_number,
+                        release_year, genre, file_path, file_format, file_size,
+                        artwork_data, artwork_path
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![
+                        track.id,
+                        track.title,
+                        track.artist,
+                        track.album,
+                        track.duration,
+                        track.track_number,
+                        track.disc_number,
+                        track.release_year,
+                        track.genre,
+                        match &track.source {
+                            PlaybackSource::Local { path, .. } => path.to_str().unwrap_or_default(),
+                            _ => "",
+                        },
+                        match &track.source {
+                            PlaybackSource::Local { file_format, .. } => file_format,
+                            _ => "",
+                        },
+                        match &track.source {
+                            PlaybackSource::Local { file_size, .. } => file_size,
+                            _ => &0,
+                        },
+                        match &track.artwork {
+                            Artwork {
+                                thumbnail: Some(data),
+                                ..
+                            } => Some(data as &[u8]),
+                            _ => None,
+                        },
+                        match &track.artwork.full_art {
+                            ArtworkSource::Local { path } => path.to_str().unwrap_or_default(),
+                            _ => "",
+                        },
+                    ],
+                ) {
+                    success = false;
+                    if e.to_string().contains("database is locked") {
+                        break;
+                    } else {
+                        return Err(Box::new(e));
+                    }
+                }
+            }
+
+            if success {
+                tx.commit()?;
+                println!("Successfully inserted batch of {} tracks", tracks.len());
+                return Ok(());
+            }
+
+            retry_count += 1;
+            if retry_count < MAX_RETRIES {
+                let sleep_duration = std::time::Duration::from_millis(500 * retry_count as u64);
+                println!(
+                    "Retrying batch insert (attempt {}/{}) after {:?}",
+                    retry_count + 1,
+                    MAX_RETRIES,
+                    sleep_duration
+                );
+                std::thread::sleep(sleep_duration);
+            }
         }
 
-        tx.commit()?;
-        Ok(())
+        Err("Failed to insert tracks after maximum retries".into())
     }
 
     pub fn insert_track(&self, track: &Track) -> Result<(), Box<dyn Error + Send + Sync>> {

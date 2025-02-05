@@ -61,81 +61,78 @@ impl LocalMusicProvider {
             watcher,
         };
 
-        // Scan files in parallel
+        // Scan files sequentially
         println!("Starting music directory scan...");
         let files = FileScanner::scan_directory(&provider.music_dir)?;
         println!("Found {} music files", files.len());
 
-        // Process files in chunks to avoid overwhelming the database
-        const CHUNK_SIZE: usize = 50;
+        // Process files in very small batches
+        const CHUNK_SIZE: usize = 5; // Reduced batch size
 
-        for chunk in files.chunks(CHUNK_SIZE) {
-            let tracks: Vec<_> = chunk
-                .par_iter()
-                .filter_map(|file| match FileScanner::process_file(file) {
-                    Ok(track) => Some(track),
-                    Err(e) => {
-                        eprintln!("Error processing file {:?}: {}", file, e);
-                        None
+        // Scope the database lock
+        {
+            let db = provider.db.blocking_read();
+
+            for chunk in files.chunks(CHUNK_SIZE) {
+                let mut tracks = Vec::with_capacity(chunk.len());
+
+                // Process files sequentially
+                for file in chunk {
+                    match FileScanner::process_file(file) {
+                        Ok(track) => {
+                            println!(
+                                "Successfully processed file: {} - {}",
+                                track.title, track.artist
+                            );
+                            tracks.push(track);
+                        }
+                        Err(e) => {
+                            eprintln!("Error processing file {:?}: {}", file, e);
+                        }
                     }
-                })
-                .collect();
+                }
 
-            // Use a blocking write operation to ensure sequential database access
-            if let Err(e) = db.blocking_read().batch_insert_tracks(&tracks) {
-                eprintln!("Error inserting tracks: {}", e);
-            }
-        }
+                // Insert the batch with increased timeout and retries
+                const MAX_RETRIES: u32 = 5;
+                let mut retry_count = 0;
+                let mut last_error = None;
 
-        println!("Successfully processed all tracks");
-
-        // Start watching for changes
-        let provider_clone = provider.clone();
-        glib::MainContext::default().spawn_local(async move {
-            loop {
-                let watcher = provider_clone.watcher.read().await;
-                match watcher.try_receive() {
-                    Some(FileEvent::Created(path)) | Some(FileEvent::Modified(path)) => {
-                        if FileScanner::is_music_file_public(&path) {
-                            match FileScanner::process_file(&path) {
-                                Ok(track) => {
-                                    let mut db = provider_clone.db.write().await;
-                                    if let Err(e) = db.insert_track(&track) {
-                                        eprintln!("Error updating track in database: {}", e);
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Error processing file {:?}: {}", path, e);
-                                }
+                while retry_count < MAX_RETRIES {
+                    match db.batch_insert_tracks(&tracks) {
+                        Ok(_) => {
+                            println!("Successfully inserted batch of {} tracks", tracks.len());
+                            break;
+                        }
+                        Err(e) => {
+                            retry_count += 1;
+                            last_error = Some(e);
+                            if retry_count < MAX_RETRIES {
+                                let sleep_duration =
+                                    std::time::Duration::from_millis(500 * retry_count as u64);
+                                println!(
+                                    "Retrying batch insert (attempt {}/{}) after {:?}",
+                                    retry_count + 1,
+                                    MAX_RETRIES,
+                                    sleep_duration
+                                );
+                                std::thread::sleep(sleep_duration);
                             }
                         }
                     }
-                    Some(FileEvent::Removed(path)) => {
-                        let mut db = provider_clone.db.write().await;
-                        if let Err(e) = db.remove_track_by_path(&path) {
-                            eprintln!("Error removing track from database: {}", e);
-                        }
-                    }
-                    None => {
-                        // No events to process, sleep for a longer time
-                        glib::timeout_future(Duration::from_millis(500)).await;
-                    }
                 }
-            }
-        });
 
-        // Add periodic cleanup
-        let provider_clone = provider.clone();
-        glib::MainContext::default().spawn_local(async move {
-            loop {
-                // Run cleanup every hour
-                glib::timeout_future(Duration::from_secs(3600)).await;
-                let db = provider_clone.db.write().await;
-                if let Err(e) = db.cleanup_database() {
-                    eprintln!("Error during database cleanup: {}", e);
+                if let Some(e) = last_error {
+                    if retry_count >= MAX_RETRIES {
+                        eprintln!(
+                            "Failed to insert batch after {} retries: {}",
+                            MAX_RETRIES, e
+                        );
+                    }
                 }
             }
-        });
+        } // db lock is released here
+
+        println!("Successfully processed all tracks");
 
         Ok(provider)
     }

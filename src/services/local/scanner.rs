@@ -13,16 +13,29 @@ pub struct FileScanner;
 
 impl FileScanner {
     pub fn scan_directory(path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error + Send + Sync>> {
-        use rayon::prelude::*;
+        println!("Scanning directory: {:?}", path); // Add logging
 
         let walker = WalkDir::new(path).follow_links(true).into_iter();
         let music_files: Vec<_> = walker
-            .filter_map(Result::ok)
-            .par_bridge()
-            .filter(|entry| Self::is_music_file(entry.path()))
-            .map(|entry| entry.path().to_owned())
+            .filter_map(|entry| {
+                match entry {
+                    Ok(e) => {
+                        if Self::is_music_file(e.path()) {
+                            println!("Found music file: {:?}", e.path()); // Add logging
+                            Some(e.path().to_owned())
+                        } else {
+                            None
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error accessing file: {}", e);
+                        None
+                    }
+                }
+            })
             .collect();
 
+        println!("Found {} music files", music_files.len()); // Add logging
         Ok(music_files)
     }
 
@@ -42,6 +55,8 @@ impl FileScanner {
     }
 
     pub fn process_file(path: &Path) -> Result<Track, Box<dyn Error + Send + Sync>> {
+        println!("Processing file: {:?}", path);
+
         // Check if file exists first
         if !path.exists() {
             return Err(Box::new(std::io::Error::new(
@@ -214,6 +229,8 @@ impl FileScanner {
             .and_then(|ext| ext.to_str())
             .unwrap_or("unknown")
             .to_lowercase();
+
+        println!("Successfully processed file: {} - {}", title, artist);
 
         Ok(Track {
             id,
