@@ -51,11 +51,14 @@ impl LocalMusicProvider {
         let db = Database::new()?;
         let watcher = FileWatcher::new(music_dir.clone())?;
 
+        let db = Arc::new(RwLock::new(db));
+        let watcher = Arc::new(RwLock::new(watcher));
+
         // Create provider first
         let provider = Self {
             music_dir,
-            db: Arc::new(RwLock::new(db)),
-            watcher: Arc::new(RwLock::new(watcher)),
+            db: db.clone(),
+            watcher,
         };
 
         // Scan files in parallel
@@ -78,8 +81,8 @@ impl LocalMusicProvider {
                 })
                 .collect();
 
-            // Insert chunk of tracks
-            if let Err(e) = provider.db.blocking_read().batch_insert_tracks(&tracks) {
+            // Use a blocking write operation to ensure sequential database access
+            if let Err(e) = db.blocking_read().batch_insert_tracks(&tracks) {
                 eprintln!("Error inserting tracks: {}", e);
             }
         }

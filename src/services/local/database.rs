@@ -803,6 +803,7 @@ impl Database {
         tracks: &[Track],
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut conn = self.pool.get()?;
+        conn.execute_batch("PRAGMA busy_timeout = 60000;")?;
         let tx = conn.transaction()?;
 
         for track in tracks {

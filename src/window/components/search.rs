@@ -1,5 +1,5 @@
 use crate::services::models::SearchResults;
-use crate::services::PlayableItem;
+use crate::services::{Album, Artist, PlayableItem, Track};
 use crate::window::components::cards::{create_album_card, create_artist_card, create_track_card};
 use crate::window::imp;
 use adw::prelude::*;
@@ -89,6 +89,40 @@ pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &SearchResu
     let track_section = this.tracks_box.parent().unwrap();
     track_section.set_visible(true);
 
+    // Sort and process tracks
+    let mut tracks = results.tracks.clone();
+    tracks.sort_by(|a, b| {
+        score_track(&b.track, query)
+            .partial_cmp(&score_track(&a.track, query))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Sort and filter artists
+    let mut filtered_artists: Vec<_> = results
+        .artists
+        .iter()
+        .filter(|artist| artist.name != "Unknown Artist")
+        .collect();
+
+    filtered_artists.sort_by(|a, b| {
+        score_artist(b, query)
+            .partial_cmp(&score_artist(a, query))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Sort and filter albums
+    let mut filtered_albums: Vec<_> = results
+        .albums
+        .iter()
+        .filter(|album| album.title != "Unknown Album")
+        .collect();
+
+    filtered_albums.sort_by(|a, b| {
+        score_album(b, query)
+            .partial_cmp(&score_album(a, query))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
     // Show top result based on relevance scoring
     if let Some(top_result) = determine_top_result(results, query) {
         this.top_result_box.set_center_widget(Some(&top_result));
@@ -96,22 +130,16 @@ pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &SearchResu
         this.top_result_box.parent().unwrap().set_visible(true);
     }
 
-    // Update tracks section (always show if we have tracks)
-    if !results.tracks.is_empty() {
-        for track in results.tracks.iter().take(5) {
+    // Update tracks section
+    if !tracks.is_empty() {
+        for track in tracks.iter().take(5) {
             let card = create_track_card(&track.track, false);
             this.tracks_box.append(&card);
         }
         this.tracks_box.set_visible(true);
     }
 
-    // Update artists section (filter out Unknown Artist)
-    let filtered_artists: Vec<_> = results
-        .artists
-        .iter()
-        .filter(|artist| artist.name != "Unknown Artist")
-        .collect();
-
+    // Update artists section
     if !filtered_artists.is_empty() {
         for artist in filtered_artists.iter().take(6) {
             let card = create_artist_card(artist, false);
@@ -122,13 +150,7 @@ pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &SearchResu
         this.artists_section.set_visible(false);
     }
 
-    // Update albums section (filter out Unknown Album)
-    let filtered_albums: Vec<_> = results
-        .albums
-        .iter()
-        .filter(|album| album.title != "Unknown Album")
-        .collect();
-
+    // Update albums section
     if !filtered_albums.is_empty() {
         for album in filtered_albums.iter().take(6) {
             let card = create_album_card(album, false);
@@ -140,107 +162,168 @@ pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &SearchResu
     }
 }
 
-fn determine_top_result(results: &SearchResults, query: &str) -> Option<gtk::Box> {
+fn score_track(track: &Track, query: &str) -> f32 {
     let query = query.to_lowercase();
 
-    // Helper functions for scoring
-    let score_exact_match = |text: &str| -> i32 {
-        if text.to_lowercase() == query {
-            1000
-        } else {
-            0
-        }
+    // Primary matches (high weight for track-specific fields)
+    let title_exact = if track.title.to_lowercase() == query {
+        1200.0
+    } else {
+        0.0
+    };
+    let title_contains = if track.title.to_lowercase().contains(&query) {
+        600.0
+    } else {
+        0.0
     };
 
-    let score_contains = |text: &str| -> i32 {
-        if text.to_lowercase().contains(&query) {
-            500
-        } else {
-            0
-        }
+    // Secondary matches (lower weight for related fields)
+    let artist_exact = if track.artist.to_lowercase() == query {
+        300.0
+    } else {
+        0.0
     };
+    let artist_contains = if track.artist.to_lowercase().contains(&query) {
+        150.0
+    } else {
+        0.0
+    };
+    let album_exact = if track.album.to_lowercase() == query {
+        200.0
+    } else {
+        0.0
+    };
+    let album_contains = if track.album.to_lowercase().contains(&query) {
+        100.0
+    } else {
+        0.0
+    };
+
+    title_exact + title_contains + artist_exact + artist_contains + album_exact + album_contains
+}
+
+fn score_artist(artist: &Artist, query: &str) -> f32 {
+    let query = query.to_lowercase();
+
+    // Primary matches (high weight for artist-specific fields)
+    let name_exact = if artist.name.to_lowercase() == query {
+        1200.0
+    } else {
+        0.0
+    };
+    let name_contains = if artist.name.to_lowercase().contains(&query) {
+        600.0
+    } else {
+        0.0
+    };
+
+    name_exact + name_contains
+}
+
+fn score_album(album: &Album, query: &str) -> f32 {
+    let query = query.to_lowercase();
+
+    // Primary matches (high weight for album-specific fields)
+    let title_exact = if album.title.to_lowercase() == query {
+        1200.0
+    } else {
+        0.0
+    };
+    let title_contains = if album.title.to_lowercase().contains(&query) {
+        600.0
+    } else {
+        0.0
+    };
+
+    // Secondary matches (lower weight for related fields)
+    let artist_exact = if album.artist.to_lowercase() == query {
+        300.0
+    } else {
+        0.0
+    };
+    let artist_contains = if album.artist.to_lowercase().contains(&query) {
+        150.0
+    } else {
+        0.0
+    };
+
+    // Additional score for release year if query is a year
+    let year_score = if let Some(year) = album.year {
+        if query == year.to_string() {
+            400.0
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    title_exact + title_contains + artist_exact + artist_contains + year_score
+}
+
+fn determine_top_result(results: &SearchResults, query: &str) -> Option<gtk::Box> {
+    let mut best_result = None;
+    let mut best_score = -1.0;
 
     // Score tracks
-    let best_track = results.tracks.first().map(|t| {
-        let primary_score = score_exact_match(&t.track.title) +     // Primary: track name
-            score_contains(&t.track.title); // Primary: partial track name
-
-        let secondary_score = (score_exact_match(&t.track.artist) / 2) +   // Secondary: artist match
-            (score_exact_match(&t.track.album) / 2) +    // Secondary: album match
-            (score_contains(&t.track.artist) / 4) +      // Secondary: partial artist match
-            (score_contains(&t.track.album) / 4); // Secondary: partial album match
-
-        (
-            primary_score + secondary_score,
-            create_track_card(&t.track, true),
-        )
-    });
+    if let Some(track) = results.tracks.first() {
+        let score = score_track(&track.track, query);
+        if score > best_score {
+            best_score = score;
+            best_result = Some(create_track_card(&track.track, true));
+        }
+    }
 
     // Score artists
-    let best_artist = results.artists.first().map(|a| {
-        let primary_score = score_exact_match(&a.name) +     // Primary: artist name
-            score_contains(&a.name); // Primary: partial artist name
-
-        // Find associated tracks for secondary matching
-        let secondary_score = results
-            .tracks
-            .iter()
-            .filter(|t| t.track.artist == a.name)
-            .map(|t| {
-                (score_exact_match(&t.track.title) / 2) +    // Secondary: track match
-                (score_exact_match(&t.track.album) / 2) +    // Secondary: album match
-                (score_contains(&t.track.title) / 4) +       // Secondary: partial track match
-                (score_contains(&t.track.album) / 4) // Secondary: partial album match
-            })
-            .sum::<i32>();
-
-        (primary_score + secondary_score, create_artist_card(a, true))
-    });
+    if let Some(artist) = results.artists.first() {
+        let score = score_artist(artist, query);
+        if score > best_score {
+            best_score = score;
+            best_result = Some(create_artist_card(artist, true));
+        }
+    }
 
     // Score albums
-    let best_album = results.albums.first().map(|a| {
-        let primary_score = score_exact_match(&a.title) +     // Primary: album name
-            score_contains(&a.title); // Primary: partial album name
-
-        let secondary_score = (score_exact_match(&a.artist) / 2) +   // Secondary: artist match
-            (score_contains(&a.artist) / 4) +      // Secondary: partial artist match
-            // Add track matching if we have associated tracks
-            results.tracks.iter()
-                .filter(|t| t.track.album == a.title && t.track.artist == a.artist)
-                .map(|t| {
-                    (score_exact_match(&t.track.title) / 2) +   // Secondary: track match
-                    (score_contains(&t.track.title) / 4)        // Secondary: partial track match
-                })
-                .sum::<i32>();
-
-        (primary_score + secondary_score, create_album_card(a, true))
-    });
-
-    // Find the highest scoring result
-    let mut best_result = None;
-    let mut best_score = -1;
-
-    if let Some((score, widget)) = best_track {
+    if let Some(album) = results.albums.first() {
+        let score = score_album(album, query);
         if score > best_score {
-            best_score = score;
-            best_result = Some(widget);
-        }
-    }
-
-    if let Some((score, widget)) = best_artist {
-        if score > best_score {
-            best_score = score;
-            best_result = Some(widget);
-        }
-    }
-
-    if let Some((score, widget)) = best_album {
-        if score > best_score {
-            best_result = Some(widget);
+            best_result = Some(create_album_card(album, true));
         }
     }
 
     best_result
+}
+
+fn score_item(primary: &str, secondary: &str, query: &str, weight: f32) -> f32 {
+    let query = query.to_lowercase();
+    let primary = primary.to_lowercase();
+    let secondary = secondary.to_lowercase();
+
+    let exact_match = if primary == query {
+        1000.0 * weight
+    } else {
+        0.0
+    };
+
+    let contains = if primary.contains(&query) {
+        500.0 * weight
+    } else {
+        0.0
+    };
+
+    let secondary_score = if !secondary.is_empty() {
+        if secondary == query {
+            250.0 * weight
+        } else if secondary.contains(&query) {
+            125.0 * weight
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    exact_match + contains + secondary_score
 }
 
 pub(crate) fn create_loading_indicator() -> gtk::Box {
