@@ -1,4 +1,6 @@
 use crate::services::models::{Artwork, ArtworkSource, Track};
+use crate::services::{Album, Artist};
+use crate::window::utils::ui::create_artwork_image;
 use gdk_pixbuf::Pixbuf;
 use gtk::prelude::*;
 use gtk::{gio, glib, pango};
@@ -160,8 +162,7 @@ pub(crate) fn create_track_card(track: &Track, is_large: bool) -> gtk::Box {
 }
 
 pub(crate) fn create_artist_card(
-    name: &str,
-    artwork: Option<&Artwork>,
+    artist: &Artist, // Change to take Artist struct directly
     is_large: bool,
 ) -> gtk::Box {
     if is_large {
@@ -177,42 +178,25 @@ pub(crate) fn create_artist_card(
         content.add_css_class("track-card");
         content.add_css_class("large-track");
 
-        let art = if let Some(artwork) = artwork {
-            match artwork {
-                Artwork {
-                    thumbnail: Some(data),
-                    ..
-                } => {
-                    let bytes = glib::Bytes::from(data);
-                    let stream = gio::MemoryInputStream::from_bytes(&bytes);
-                    if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
-                        if let Some(scaled) =
-                            pixbuf.scale_simple(200, 200, gdk_pixbuf::InterpType::Bilinear)
-                        {
-                            let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
-                            gtk::Image::from_paintable(Some(&paintable))
-                        } else {
-                            gtk::Image::from_icon_name("avatar-default-symbolic")
-                        }
-                    } else {
-                        gtk::Image::from_icon_name("avatar-default-symbolic")
-                    }
-                }
-                _ => gtk::Image::from_icon_name("avatar-default-symbolic"),
-            }
+        // Use the artist's artwork directly
+        let art = if let Some(ref artwork) = artist.artwork {
+            create_artwork_image(artwork, 200)
         } else {
-            gtk::Image::from_icon_name("avatar-default-symbolic")
+            let image = gtk::Image::from_icon_name("avatar-default-symbolic");
+            image.set_pixel_size(200);
+            image
         };
         art.add_css_class("large-image");
 
+        // Rest of the large card layout...
         let labels = gtk::Box::new(gtk::Orientation::Vertical, 8);
         labels.set_halign(gtk::Align::Center);
         labels.set_width_request(130);
 
-        let name_label = gtk::Label::new(Some(name));
+        let name_label = gtk::Label::new(Some(&artist.name));
         name_label.add_css_class("track-title");
         name_label.set_halign(gtk::Align::Center);
-        name_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        name_label.set_ellipsize(pango::EllipsizeMode::End);
         name_label.set_lines(2);
         name_label.set_max_width_chars(15);
         name_label.set_width_chars(15);
@@ -222,12 +206,6 @@ pub(crate) fn create_artist_card(
         let type_label = gtk::Label::new(Some("Artist"));
         type_label.add_css_class("type-label");
         type_label.set_halign(gtk::Align::Center);
-        type_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        type_label.set_lines(1);
-        type_label.set_max_width_chars(15);
-        type_label.set_width_chars(15);
-        type_label.set_justify(gtk::Justification::Center);
-        type_label.set_hexpand(false);
 
         labels.append(&name_label);
         labels.append(&type_label);
@@ -235,7 +213,8 @@ pub(crate) fn create_artist_card(
         content.append(&art);
         content.append(&labels);
 
-        let artist_name = name.to_string();
+        // Add click handling
+        let artist_name = artist.name.clone();
         let click_controller = gtk::GestureClick::new();
         click_controller.connect_released(move |_, _, _, _| {
             println!("Clicked on artist: '{}'", artist_name);
@@ -250,41 +229,23 @@ pub(crate) fn create_artist_card(
         card.set_hexpand(false);
         card.set_halign(gtk::Align::Center);
 
-        let art = if let Some(artwork) = artwork {
-            match artwork {
-                Artwork {
-                    thumbnail: Some(data),
-                    ..
-                } => {
-                    let bytes = glib::Bytes::from(data);
-                    let stream = gio::MemoryInputStream::from_bytes(&bytes);
-                    if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
-                        if let Some(scaled) =
-                            pixbuf.scale_simple(150, 150, gdk_pixbuf::InterpType::Bilinear)
-                        {
-                            let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
-                            gtk::Image::from_paintable(Some(&paintable))
-                        } else {
-                            gtk::Image::from_icon_name("avatar-default-symbolic")
-                        }
-                    } else {
-                        gtk::Image::from_icon_name("avatar-default-symbolic")
-                    }
-                }
-                _ => gtk::Image::from_icon_name("avatar-default-symbolic"),
-            }
+        // Use the artist's artwork directly
+        let art = if let Some(ref artwork) = artist.artwork {
+            create_artwork_image(artwork, 150)
         } else {
-            gtk::Image::from_icon_name("avatar-default-symbolic")
+            let image = gtk::Image::from_icon_name("avatar-default-symbolic");
+            image.set_pixel_size(150);
+            image
         };
         art.add_css_class("artist-image");
 
-        let name_label = gtk::Label::new(Some(name));
+        let name_label = gtk::Label::new(Some(&artist.name));
         name_label.add_css_class("artist-name");
 
         card.append(&art);
         card.append(&name_label);
 
-        let artist_name = name.to_string();
+        let artist_name = artist.name.clone();
         let click_controller = gtk::GestureClick::new();
         click_controller.connect_released(move |_, _, _, _| {
             println!("Clicked on artist: '{}'", artist_name);
@@ -296,9 +257,7 @@ pub(crate) fn create_artist_card(
 }
 
 pub(crate) fn create_album_card(
-    title: &str,
-    artist: &str,
-    artwork: Option<&Artwork>,
+    album: &Album, // Change to take Album struct directly
     is_large: bool,
 ) -> gtk::Box {
     if is_large {
@@ -314,31 +273,13 @@ pub(crate) fn create_album_card(
         content.add_css_class("track-card");
         content.add_css_class("large-track");
 
-        let art = if let Some(artwork) = artwork {
-            match artwork {
-                Artwork {
-                    thumbnail: Some(data),
-                    ..
-                } => {
-                    let bytes = glib::Bytes::from(data);
-                    let stream = gio::MemoryInputStream::from_bytes(&bytes);
-                    if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
-                        if let Some(scaled) =
-                            pixbuf.scale_simple(200, 200, gdk_pixbuf::InterpType::Bilinear)
-                        {
-                            let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
-                            gtk::Image::from_paintable(Some(&paintable))
-                        } else {
-                            gtk::Image::from_icon_name("audio-x-generic-symbolic")
-                        }
-                    } else {
-                        gtk::Image::from_icon_name("audio-x-generic-symbolic")
-                    }
-                }
-                _ => gtk::Image::from_icon_name("audio-x-generic-symbolic"),
-            }
+        // Use the album's artwork directly
+        let art = if let Some(ref artwork) = album.artwork {
+            create_artwork_image(artwork, 200)
         } else {
-            gtk::Image::from_icon_name("audio-x-generic-symbolic")
+            let image = gtk::Image::from_icon_name("audio-x-generic-symbolic");
+            image.set_pixel_size(200);
+            image
         };
         art.add_css_class("large-image");
 
@@ -346,38 +287,25 @@ pub(crate) fn create_album_card(
         labels.set_halign(gtk::Align::Center);
         labels.set_width_request(130);
 
-        let title_label = gtk::Label::new(Some(title));
+        let title_label = gtk::Label::new(Some(&album.title));
         title_label.add_css_class("track-title");
         title_label.set_halign(gtk::Align::Center);
-        title_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        title_label.set_ellipsize(pango::EllipsizeMode::End);
         title_label.set_lines(2);
         title_label.set_max_width_chars(15);
         title_label.set_width_chars(15);
         title_label.set_justify(gtk::Justification::Center);
         title_label.set_hexpand(false);
 
-        let type_label = gtk::Label::new(Some(&format!("Album • {}", artist)));
+        let type_label = gtk::Label::new(Some(&format!("Album • {}", album.artist)));
         type_label.add_css_class("type-label");
         type_label.set_halign(gtk::Align::Center);
-        type_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        type_label.set_lines(1);
-        type_label.set_max_width_chars(15);
-        type_label.set_width_chars(15);
-        type_label.set_justify(gtk::Justification::Center);
-        type_label.set_hexpand(false);
 
         labels.append(&title_label);
         labels.append(&type_label);
 
         content.append(&art);
         content.append(&labels);
-
-        let album_info = (title.to_string(), artist.to_string());
-        let click_controller = gtk::GestureClick::new();
-        click_controller.connect_released(move |_, _, _, _| {
-            println!("Clicked on album: '{}' by '{}'", album_info.0, album_info.1);
-        });
-        content.add_controller(click_controller);
 
         container.append(&content);
         container
@@ -387,51 +315,33 @@ pub(crate) fn create_album_card(
         card.set_hexpand(false);
         card.set_halign(gtk::Align::Center);
 
-        let art = if let Some(artwork) = artwork {
-            match artwork {
-                Artwork {
-                    thumbnail: Some(data),
-                    ..
-                } => {
-                    let bytes = glib::Bytes::from(data);
-                    let stream = gio::MemoryInputStream::from_bytes(&bytes);
-                    if let Ok(pixbuf) = Pixbuf::from_stream(&stream, None::<&gio::Cancellable>) {
-                        if let Some(scaled) =
-                            pixbuf.scale_simple(150, 150, gdk_pixbuf::InterpType::Bilinear)
-                        {
-                            let paintable = gtk::gdk::Texture::for_pixbuf(&scaled);
-                            gtk::Image::from_paintable(Some(&paintable))
-                        } else {
-                            gtk::Image::from_icon_name("audio-x-generic-symbolic")
-                        }
-                    } else {
-                        gtk::Image::from_icon_name("audio-x-generic-symbolic")
-                    }
-                }
-                _ => gtk::Image::from_icon_name("audio-x-generic-symbolic"),
-            }
+        // Use the album's artwork directly
+        let art = if let Some(ref artwork) = album.artwork {
+            create_artwork_image(artwork, 150)
         } else {
-            gtk::Image::from_icon_name("audio-x-generic-symbolic")
+            let image = gtk::Image::from_icon_name("audio-x-generic-symbolic");
+            image.set_pixel_size(150);
+            image
         };
         art.add_css_class("album-image");
 
         let labels = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        labels.set_width_request(130); // Force fixed width for label container
+        labels.set_width_request(130);
 
-        let title_label = gtk::Label::new(Some(title));
-        title_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        let title_label = gtk::Label::new(Some(&album.title));
+        title_label.set_ellipsize(pango::EllipsizeMode::End);
         title_label.set_lines(2);
         title_label.set_max_width_chars(15);
-        title_label.set_width_chars(15); // Force width to be exactly 15 chars
+        title_label.set_width_chars(15);
         title_label.set_justify(gtk::Justification::Center);
         title_label.set_hexpand(false);
         title_label.add_css_class("album-title");
 
-        let artist_label = gtk::Label::new(Some(artist));
-        artist_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        let artist_label = gtk::Label::new(Some(&album.artist));
+        artist_label.set_ellipsize(pango::EllipsizeMode::End);
         artist_label.set_lines(1);
         artist_label.set_max_width_chars(15);
-        artist_label.set_width_chars(15); // Force width to be exactly 15 chars
+        artist_label.set_width_chars(15);
         artist_label.set_justify(gtk::Justification::Center);
         artist_label.set_hexpand(false);
         artist_label.add_css_class("album-artist");
@@ -443,7 +353,7 @@ pub(crate) fn create_album_card(
         card.append(&art);
         card.append(&labels);
 
-        let album_info = (title.to_string(), artist.to_string());
+        let album_info = (album.title.clone(), album.artist.clone());
         let click_controller = gtk::GestureClick::new();
         click_controller.connect_released(move |_, _, _, _| {
             println!("Clicked on album: '{}' by '{}'", album_info.0, album_info.1);

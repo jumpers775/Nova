@@ -114,14 +114,7 @@ pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &SearchResu
 
     if !filtered_artists.is_empty() {
         for artist in filtered_artists.iter().take(6) {
-            // Find matching track for artwork
-            let artist_artwork = results
-                .tracks
-                .iter()
-                .find(|t| t.track.artist == artist.name)
-                .map(|t| &t.track.artwork);
-
-            let card = create_artist_card(&artist.name, artist_artwork, false);
+            let card = create_artist_card(artist, false);
             this.artists_box.append(&card);
         }
         this.artists_section.set_visible(true);
@@ -138,14 +131,7 @@ pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &SearchResu
 
     if !filtered_albums.is_empty() {
         for album in filtered_albums.iter().take(6) {
-            // Find matching track for artwork
-            let album_artwork = results
-                .tracks
-                .iter()
-                .find(|t| t.track.album == album.title && t.track.artist == album.artist)
-                .map(|t| &t.track.artwork);
-
-            let card = create_album_card(&album.title, &album.artist, album_artwork, false);
+            let card = create_album_card(album, false);
             this.albums_box.append(&card);
         }
         this.albums_section.set_visible(true);
@@ -208,16 +194,7 @@ fn determine_top_result(results: &SearchResults, query: &str) -> Option<gtk::Box
             })
             .sum::<i32>();
 
-        let artist_artwork = results
-            .tracks
-            .iter()
-            .find(|t| t.track.artist == a.name)
-            .map(|t| &t.track.artwork);
-
-        (
-            primary_score + secondary_score,
-            create_artist_card(&a.name, artist_artwork, true),
-        )
+        (primary_score + secondary_score, create_artist_card(a, true))
     });
 
     // Score albums
@@ -236,16 +213,7 @@ fn determine_top_result(results: &SearchResults, query: &str) -> Option<gtk::Box
                 })
                 .sum::<i32>();
 
-        let album_artwork = results
-            .tracks
-            .iter()
-            .find(|t| t.track.album == a.title && t.track.artist == a.artist)
-            .map(|t| &t.track.artwork);
-
-        (
-            primary_score + secondary_score,
-            create_album_card(&a.title, &a.artist, album_artwork, true),
-        )
+        (primary_score + secondary_score, create_album_card(a, true))
     });
 
     // Find the highest scoring result

@@ -79,6 +79,7 @@ pub struct Album {
     pub year: Option<u32>,
     pub art_url: Option<String>,
     pub tracks: Vec<String>, // Track IDs
+    pub artwork: Option<Artwork>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +87,7 @@ pub struct Artist {
     pub id: String,
     pub name: String,
     pub albums: Vec<String>, // Album IDs
+    pub artwork: Option<Artwork>,
 }
 
 #[derive(Debug, Clone)]
