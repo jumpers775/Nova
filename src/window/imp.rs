@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::runtime::Runtime;
 
 #[derive(Debug, Default, gtk::CompositeTemplate)]
 #[template(resource = "/com/lucamignatti/nova/window/window.ui")]
@@ -126,22 +127,41 @@ impl ObjectImpl for NovaWindow {
 
 impl NovaWindow {
     fn setup_service_manager(&self) {
-        // Initialize ServiceManager
         if self.service_manager.borrow().is_none() {
             let manager = ServiceManager::new();
+            let manager = Arc::new(manager);
+            let manager_clone = manager.clone();
 
             let music_dir = dirs::audio_dir().unwrap_or_else(|| {
                 PathBuf::from(&format!("{}/Music", std::env::var("HOME").unwrap()))
             });
-            let local_provider = Box::new(LocalMusicProvider::new(music_dir));
 
-            let manager = Arc::new(manager);
-            let manager_clone = manager.clone();
+            println!("Setting up music directory: {:?}", music_dir);
+            println!("Directory exists: {}", music_dir.exists());
+            if music_dir.exists() {
+                println!("Directory contents:");
+                if let Ok(entries) = std::fs::read_dir(&music_dir) {
+                    for entry in entries {
+                        if let Ok(entry) = entry {
+                            println!("  {:?}", entry.path());
+                        }
+                    }
+                }
+            }
 
-            gtk::glib::MainContext::default().spawn_local(async move {
-                manager_clone
-                    .register_provider("local", local_provider)
-                    .await;
+            glib::MainContext::default().spawn_local(async move {
+                match LocalMusicProvider::new(music_dir) {
+                    Ok(provider) => {
+                        println!("LocalMusicProvider initialized, registering...");
+                        manager_clone
+                            .register_provider("local", Box::new(provider))
+                            .await;
+                        println!("Provider registered successfully");
+                    }
+                    Err(e) => {
+                        eprintln!("Error initializing local music provider: {}", e);
+                    }
+                }
             });
 
             self.service_manager.replace(Some(manager));
@@ -276,6 +296,7 @@ impl NovaWindow {
                 // Create new search with delay
                 let obj_weak = obj_weak.clone();
                 let query = query.clone();
+
                 let handle = glib::MainContext::default().spawn_local(async move {
                     // Wait for debounce period
                     glib::timeout_future(Duration::from_millis(300)).await;

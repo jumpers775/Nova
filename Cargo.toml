@@ -19,6 +19,19 @@ gdk-pixbuf = "0.20"
 cairo-rs = "0.20"
 futures = "0.3"
 fuzzy-matcher = "0.3"
+rusqlite = { version = "0.33", features = [
+    "bundled",
+    "blob",
+    "backup",
+    "functions",
+] }
+sha1 = "0.10"
+parking_lot = "0.12"
+r2d2 = "0.8"
+r2d2_sqlite = "0.26"
+notify = "8.0"
+crossbeam-channel = "0.5"
+rayon = "1.10"
 
 
 [dependencies.adw]

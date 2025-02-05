@@ -58,42 +58,43 @@ impl ServiceManager {
         limit: usize,
         offset: usize,
     ) -> Result<SearchResults, ServiceError> {
+        println!("ServiceManager::search_all called with query: {}", query);
         let weights = weights.unwrap_or_default();
         let providers = self.providers.read().await;
+        println!("Number of registered providers: {}", providers.len());
         let mut all_results = SearchResults {
             tracks: Vec::new(),
             albums: Vec::new(),
             artists: Vec::new(),
         };
 
-        // Query all providers concurrently
-        let mut futures = Vec::new();
         for (provider_name, provider) in providers.iter() {
-            let provider_name = provider_name.clone();
-            let query = query.to_string();
-            let weights = weights.clone();
-
-            let future = async move {
-                match provider.search_all(&query, &weights, limit, offset).await {
-                    Ok(results) => Some((provider_name, results)),
-                    Err(e) => {
-                        eprintln!("Error searching in {}: {}", provider_name, e);
-                        None
-                    }
+            println!("Searching provider: {}", provider_name);
+            match provider.search_all(query, &weights, limit, offset).await {
+                Ok(results) => {
+                    println!(
+                        "Got results from {}: {} tracks, {} albums, {} artists",
+                        provider_name,
+                        results.tracks.len(),
+                        results.albums.len(),
+                        results.artists.len()
+                    );
+                    all_results.tracks.extend(results.tracks);
+                    all_results.albums.extend(results.albums);
+                    all_results.artists.extend(results.artists);
                 }
-            };
-            futures.push(future);
-        }
-
-        // Wait for all searches to complete
-        for result in futures::future::join_all(futures).await {
-            if let Some((provider_name, results)) = result {
-                all_results.tracks.extend(results.tracks);
-                all_results.albums.extend(results.albums);
-                all_results.artists.extend(results.artists);
+                Err(e) => {
+                    eprintln!("Error searching in {}: {}", provider_name, e);
+                }
             }
         }
 
+        println!(
+            "Total results: {} tracks, {} albums, {} artists",
+            all_results.tracks.len(),
+            all_results.albums.len(),
+            all_results.artists.len()
+        );
         Ok(all_results)
     }
 }
