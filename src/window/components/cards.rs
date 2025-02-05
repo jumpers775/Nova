@@ -256,10 +256,7 @@ pub(crate) fn create_artist_card(
     }
 }
 
-pub(crate) fn create_album_card(
-    album: &Album, // Change to take Album struct directly
-    is_large: bool,
-) -> gtk::Box {
+pub(crate) fn create_album_card(album: &Album, is_large: bool) -> gtk::Box {
     if is_large {
         let container = gtk::Box::new(gtk::Orientation::Vertical, 12);
         container.set_hexpand(true);
@@ -306,6 +303,14 @@ pub(crate) fn create_album_card(
 
         content.append(&art);
         content.append(&labels);
+
+        // Add click handling for large album card
+        let album_info = (album.title.clone(), album.artist.clone());
+        let click_controller = gtk::GestureClick::new();
+        click_controller.connect_released(move |_, _, _, _| {
+            println!("Clicked on album: '{}' by '{}'", album_info.0, album_info.1);
+        });
+        content.add_controller(click_controller);
 
         container.append(&content);
         container
