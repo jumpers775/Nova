@@ -380,13 +380,54 @@ template $NovaWindow: $AdwApplicationWindow {
                   name: 'artists';
                   title: 'Artists';
 
-                  child: $AdwStatusPage {
-                    title: 'Artists';
-                    description: 'Your artists will appear here';
+                  child: Stack artists_stack {
+                    transition-type: crossfade;
 
-                    styles [
-                      "status-page"
-                    ]
+                    // Give each page a name using the stack-page
+                    StackPage {
+                      name: "placeholder";
+                      child: $AdwStatusPage artists_placeholder {
+                        title: 'Artists';
+                        description: 'Your artists will appear here';
+                        icon-name: 'avatar-default-symbolic';
+
+                        styles [
+                          "status-page"
+                        ]
+                      };
+                    }
+
+                    StackPage {
+                      name: "content";
+                      child: ScrolledWindow artists_content_scroll {
+                        vexpand: true;
+
+                        Box {
+                          orientation: vertical;
+                          spacing: 24;
+                          margin-start: 24;
+                          margin-end: 24;
+                          margin-top: 24;
+                          margin-bottom: 24;
+
+                          FlowBox artists_grid {
+                            selection-mode: none;
+                            homogeneous: true;
+                            max-children-per-line: 6;
+                            min-children-per-line: 2;
+                            row-spacing: 12;
+                            column-spacing: 12;
+                            halign: fill;
+                            valign: start;
+                            hexpand: true;
+
+                            styles [
+                              "content-grid"
+                            ]
+                          }
+                        }
+                      };
+                    }
                   };
                 }
 
@@ -394,13 +435,53 @@ template $NovaWindow: $AdwApplicationWindow {
                   name: 'albums';
                   title: 'Albums';
 
-                  child: $AdwStatusPage {
-                    title: 'Albums';
-                    description: 'Your albums will appear here';
+                  child: Stack albums_stack {
+                    transition-type: crossfade;
 
-                    styles [
-                      "status-page"
-                    ]
+                    StackPage {
+                      name: "placeholder";
+                      child: $AdwStatusPage albums_placeholder {
+                        title: 'Albums';
+                        description: 'Your albums will appear here';
+                        icon-name: 'media-optical-symbolic';
+
+                        styles [
+                          "status-page"
+                        ]
+                      };
+                    }
+
+                    StackPage {
+                      name: "content";
+                      child: ScrolledWindow albums_content_scroll {
+                        vexpand: true;
+
+                        Box {
+                          orientation: vertical;
+                          spacing: 24;
+                          margin-start: 24;
+                          margin-end: 24;
+                          margin-top: 24;
+                          margin-bottom: 24;
+
+                          FlowBox albums_grid {
+                            selection-mode: none;
+                            homogeneous: true;
+                            max-children-per-line: 6;
+                            min-children-per-line: 2;
+                            row-spacing: 12;
+                            column-spacing: 12;
+                            halign: fill;
+                            valign: start;
+                            hexpand: true;
+
+                            styles [
+                              "content-grid"
+                            ]
+                          }
+                        }
+                      };
+                    }
                   };
                 }
 

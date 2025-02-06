@@ -94,6 +94,18 @@ pub struct NovaWindow {
     pub artists_section: TemplateChild<gtk::Box>,
     #[template_child]
     pub albums_section: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub artists_stack: TemplateChild<gtk::Stack>,
+    #[template_child]
+    pub artists_grid: TemplateChild<gtk::FlowBox>,
+    #[template_child]
+    pub artists_placeholder: TemplateChild<adw::StatusPage>,
+    #[template_child]
+    pub albums_stack: TemplateChild<gtk::Stack>,
+    #[template_child]
+    pub albums_grid: TemplateChild<gtk::FlowBox>,
+    #[template_child]
+    pub albums_placeholder: TemplateChild<adw::StatusPage>,
     pub search_version: Cell<u32>,
     pub current_search_handle: RefCell<Option<glib::JoinHandle<()>>>,
     pub spinner_container: RefCell<Option<gtk::Box>>,
@@ -369,18 +381,30 @@ impl NovaWindow {
         });
 
         // Setup ListBox navigation
-        let main_stack = self.main_stack.clone(); // Clone again here
+        let main_stack = self.main_stack.clone();
         let home_button = self.home_button.clone();
+        let this = self.obj().downgrade();
         self.sidebar_list.connect_row_activated(move |_, row| {
-            let page_name = match row.index() {
-                0 => "artists",
-                1 => "albums",
-                2 => "playlists",
-                3 => "liked",
-                _ => "home",
-            };
-            main_stack.set_visible_child_name(page_name);
-            home_button.remove_css_class("selected");
+            if let Some(obj) = this.upgrade() {
+                let this = obj.imp();
+                let page_name = match row.index() {
+                    0 => {
+                        // Load artists when selecting the Artists tab
+                        this.load_artists();
+                        "artists"
+                    }
+                    1 => {
+                        // Load albums when selecting the Albums tab
+                        this.load_albums();
+                        "albums"
+                    }
+                    2 => "playlists",
+                    3 => "liked",
+                    _ => "home",
+                };
+                main_stack.set_visible_child_name(page_name);
+                home_button.remove_css_class("selected");
+            }
         });
 
         // Queue toggle with flap
@@ -519,6 +543,118 @@ impl NovaWindow {
                 btn.set_icon_name("audio-volume-high-symbolic");
             }
         });
+    }
+
+    fn load_artists(&self) {
+        if let Some(manager) = self.service_manager.borrow().as_ref() {
+            let artists_grid = self.artists_grid.clone();
+            let artists_stack = self.artists_stack.clone();
+
+            // Clear existing content
+            while let Some(child) = artists_grid.first_child() {
+                artists_grid.remove(&child);
+            }
+
+            // Show loading state
+            let loading = super::components::search::create_loading_indicator();
+            artists_grid.append(&loading);
+            artists_stack.set_visible_child_name("content");
+
+            let manager_clone = manager.clone();
+            glib::MainContext::default().spawn_local(async move {
+                match manager_clone.get_all_artists().await {
+                    Ok(artists) => {
+                        // Remove loading indicator
+                        while let Some(child) = artists_grid.first_child() {
+                            artists_grid.remove(&child);
+                        }
+
+                        if artists.is_empty() {
+                            // Show placeholder
+                            artists_stack.set_visible_child_name("placeholder");
+                        } else {
+                            // Add artist cards
+                            for artist in artists {
+                                let card =
+                                    super::components::cards::create_artist_card(&artist, false);
+                                let child = gtk::FlowBoxChild::new();
+                                child.set_child(Some(&card));
+                                artists_grid.append(&child);
+                            }
+                            artists_stack.set_visible_child_name("content");
+                        }
+                    }
+                    Err(e) => {
+                        // Show error state in placeholder
+                        artists_stack.set_visible_child_name("placeholder");
+                        let placeholder = artists_stack
+                            .child_by_name("placeholder")
+                            .and_downcast::<adw::StatusPage>()
+                            .expect("Could not get artists placeholder");
+
+                        placeholder.set_title("Error Loading Artists");
+                        placeholder.set_description(Some(&format!("{}", e)));
+                        placeholder.set_icon_name(Some("dialog-error-symbolic"));
+                    }
+                }
+            });
+        }
+    }
+
+    fn load_albums(&self) {
+        if let Some(manager) = self.service_manager.borrow().as_ref() {
+            let albums_grid = self.albums_grid.clone();
+            let albums_stack = self.albums_stack.clone();
+
+            // Clear existing content
+            while let Some(child) = albums_grid.first_child() {
+                albums_grid.remove(&child);
+            }
+
+            // Show loading state
+            let loading = super::components::search::create_loading_indicator();
+            albums_grid.append(&loading);
+            albums_stack.set_visible_child_name("content");
+
+            let manager_clone = manager.clone();
+            glib::MainContext::default().spawn_local(async move {
+                match manager_clone.get_all_albums().await {
+                    Ok(albums) => {
+                        // Remove loading indicator
+                        while let Some(child) = albums_grid.first_child() {
+                            albums_grid.remove(&child);
+                        }
+
+                        if albums.is_empty() {
+                            // Show placeholder
+                            albums_stack.set_visible_child_name("placeholder");
+                        } else {
+                            // Add album cards
+                            for album in albums {
+                                let card =
+                                    super::components::cards::create_album_card(&album, false);
+                                let child = gtk::FlowBoxChild::new();
+                                child.set_child(Some(&card));
+                                albums_grid.append(&child);
+                            }
+                            albums_stack.set_visible_child_name("content");
+                        }
+                    }
+                    Err(e) => {
+                        // Show error state in placeholder
+                        albums_stack.set_visible_child_name("placeholder");
+                        let placeholder = albums_stack
+                            .child_by_name("placeholder")
+                            .and_downcast::<adw::StatusPage>()
+                            .expect("Could not get albums placeholder");
+
+                        placeholder.set_title("Error Loading Albums");
+                        placeholder.set_description(Some(&format!("{}", e)));
+                        placeholder.set_icon_name(Some("dialog-error-symbolic"));
+                    }
+                }
+            });
+        }
     }
 }
 // Implement other traits
