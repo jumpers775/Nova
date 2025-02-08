@@ -250,8 +250,10 @@ togglebutton.circular:checked {
 }
 
 .current_album_art {
-    padding: 12px;
+    padding: 0;
     border-radius: 12px;
+    min-width: 72px;
+    min-height: 72px;
 }
 
 .large-image {
@@ -281,8 +283,8 @@ togglebutton.circular:checked {
     border-radius: 4px;
     background: alpha(@view_fg_color, 0.1);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    min-width: 48px;
-    min-height: 48px;
+    min-width: 72px;
+    min-height: 72px;
 }
 
 /* Loading Animation */

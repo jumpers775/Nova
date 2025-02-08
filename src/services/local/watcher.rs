@@ -1,16 +1,14 @@
 use crossbeam_channel::{bounded, Sender};
+use gtk::glib;
 use notify::{
     event::{CreateKind, ModifyKind, RemoveKind},
     Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher,
 };
 use parking_lot::RwLock;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FileEvent {
     Created(PathBuf),
     Modified(PathBuf),
@@ -36,27 +34,31 @@ impl FileWatcher {
                 println!("Raw watcher event: {:?}", event);
 
                 for path in event.paths {
-                    match event.kind {
+                    let event = match event.kind {
                         EventKind::Create(_) => {
                             if path.exists() {
-                                let _ = tx_clone.send(FileEvent::Created(path));
+                                Some(FileEvent::Created(path))
+                            } else {
+                                None
                             }
                         }
                         EventKind::Modify(_) => {
                             if path.exists() {
-                                let _ = tx_clone.send(FileEvent::Modified(path));
+                                Some(FileEvent::Modified(path))
                             } else {
-                                let _ = tx_clone.send(FileEvent::Removed(path));
+                                Some(FileEvent::Removed(path))
                             }
                         }
-                        EventKind::Remove(_) => {
-                            let _ = tx_clone.send(FileEvent::Removed(path));
-                        }
-                        _ => {
-                            if !path.exists() && path.extension().is_some() {
-                                let _ = tx_clone.send(FileEvent::Removed(path));
-                            }
-                        }
+                        EventKind::Remove(_) => Some(FileEvent::Removed(path)),
+                        _ => None,
+                    };
+
+                    if let Some(event) = event {
+                        // Schedule the event processing on the main thread
+                        let tx = tx_clone.clone();
+                        glib::idle_add_local_once(move || {
+                            let _ = tx.send(event);
+                        });
                     }
                 }
             } else if let Err(e) = res {

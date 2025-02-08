@@ -10,7 +10,10 @@
     "--share=ipc",
     "--socket=fallback-x11",
     "--device=dri",
-    "--socket=wayland"
+    "--socket=wayland",
+    "--socket=pulseaudio",
+    "--filesystem=xdg-music:ro",
+    "--device=all"
   ],
   "build-options": {
     "append-path": "/usr/lib/sdk/rust-stable/bin",

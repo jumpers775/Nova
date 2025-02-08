@@ -64,8 +64,7 @@ impl LocalMusicProvider {
         let db_clone = db.clone();
         let watcher_clone = watcher.clone();
 
-        println!("Starting file watch loop");
-        tokio::spawn(async move {
+        glib::spawn_future_local(async move {
             println!("Starting file watch loop");
             loop {
                 let watcher_guard = watcher_clone.read().await;

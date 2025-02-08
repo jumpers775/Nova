@@ -124,19 +124,26 @@ pub(crate) fn update_search_results(this: &imp::NovaWindow, results: &SearchResu
     });
 
     // Show top result based on relevance scoring
-    if let Some(top_result) = determine_top_result(results, query) {
-        this.top_result_box.set_center_widget(Some(&top_result));
-        this.top_result_box.set_visible(true);
-        this.top_result_box.parent().unwrap().set_visible(true);
+    if let Some(window) = this.obj().downcast_ref::<super::super::NovaWindow>() {
+        if let Some(top_result) =
+            determine_top_result(results, query, window.upcast_ref::<gtk::Window>())
+        {
+            this.top_result_box.set_center_widget(Some(&top_result));
+            this.top_result_box.set_visible(true);
+            this.top_result_box.parent().unwrap().set_visible(true);
+        }
     }
 
     // Update tracks section
     if !tracks.is_empty() {
-        for track in tracks.iter().take(5) {
-            let card = create_track_card(&track.track, false);
-            this.tracks_box.append(&card);
+        if let Some(window) = this.obj().downcast_ref::<super::super::NovaWindow>() {
+            for track in tracks.iter().take(5) {
+                let card =
+                    create_track_card(&track.track, false, window.upcast_ref::<gtk::Window>());
+                this.tracks_box.append(&card);
+            }
+            this.tracks_box.set_visible(true);
         }
-        this.tracks_box.set_visible(true);
     }
 
     // Update artists section
@@ -261,7 +268,11 @@ fn score_album(album: &Album, query: &str) -> f32 {
     title_exact + title_contains + artist_exact + artist_contains + year_score
 }
 
-fn determine_top_result(results: &SearchResults, query: &str) -> Option<gtk::Box> {
+fn determine_top_result(
+    results: &SearchResults,
+    query: &str,
+    window: &gtk::Window,
+) -> Option<gtk::Box> {
     let mut best_result = None;
     let mut best_score = -1.0;
 
@@ -270,7 +281,7 @@ fn determine_top_result(results: &SearchResults, query: &str) -> Option<gtk::Box
         let score = score_track(&track.track, query);
         if score > best_score {
             best_score = score;
-            best_result = Some(create_track_card(&track.track, true));
+            best_result = Some(create_track_card(&track.track, true, window));
         }
     }
 

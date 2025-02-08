@@ -16,6 +16,7 @@ id3 = "1.16"
 dirs = "6.0"
 chrono = { version = "0.4", features = ["serde"] }
 symphonia = { version = "0.5", features = ["all-codecs"] }
+rodio = { version = "0.17", features = ["symphonia"] }
 gdk-pixbuf = "0.20"
 cairo-rs = "0.20"
 futures = "0.3"
@@ -32,7 +33,6 @@ r2d2 = "0.8"
 r2d2_sqlite = "0.26"
 crossbeam-channel = "0.5"
 rayon = "1.10"
-
 
 [dependencies.adw]
 package = "libadwaita"

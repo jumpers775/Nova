@@ -1,11 +1,14 @@
-use crate::services::models::{Artwork, ArtworkSource, Track};
+use crate::services::models::{Artwork, ArtworkSource, PlayableItem, Track};
 use crate::services::{Album, Artist};
 use crate::window::utils::ui::create_artwork_image;
+use adw::prelude::*;
+use adw::subclass::prelude::*;
 use gdk_pixbuf::Pixbuf;
 use gtk::prelude::*;
 use gtk::{gio, glib, pango};
+use chrono::Utc;
 
-pub(crate) fn create_track_card(track: &Track, is_large: bool) -> gtk::Box {
+pub fn create_track_card(track: &Track, is_large: bool, window: &impl IsA<gtk::Window>) -> gtk::Box {
     // Helper function to create a placeholder image with the right size
     fn create_placeholder_image(size: i32) -> gtk::Image {
         let image = gtk::Image::from_icon_name("audio-x-generic-symbolic");
@@ -112,11 +115,18 @@ pub(crate) fn create_track_card(track: &Track, is_large: bool) -> gtk::Box {
         // Add click handling
         let track_info = track.clone();
         let click_controller = gtk::GestureClick::new();
+        let window_clone = window.clone();
         click_controller.connect_released(move |_, _, _, _| {
-            println!(
-                "Clicked on track: '{}' by '{}'",
-                track_info.title, track_info.artist
-            );
+            if let Some(window) = window_clone.dynamic_cast_ref::<super::super::NovaWindow>() {
+                if let Some(player) = &*window.imp().player.borrow() {
+                    let playable = PlayableItem {
+                        track: track_info.clone(),
+                        provider: "local".to_string(),  // Assuming local provider for now
+                        added_at: Utc::now(),
+                    };
+                    let _ = player.play_track(&playable.track);
+                }
+            }
         });
         content.add_controller(click_controller);
 
@@ -149,11 +159,18 @@ pub(crate) fn create_track_card(track: &Track, is_large: bool) -> gtk::Box {
         // Add click handling
         let track_info = track.clone();
         let click_controller = gtk::GestureClick::new();
+        let window_clone = window.clone();
         click_controller.connect_released(move |_, _, _, _| {
-            println!(
-                "Clicked on track: '{}' by '{}'",
-                track_info.title, track_info.artist
-            );
+            if let Some(window) = window_clone.dynamic_cast_ref::<super::super::NovaWindow>() {
+                if let Some(player) = &*window.imp().player.borrow() {
+                    let playable = PlayableItem {
+                        track: track_info.clone(),
+                        provider: "local".to_string(),  // Assuming local provider for now
+                        added_at: Utc::now(),
+                    };
+                    let _ = player.play_track(&playable.track);
+                }
+            }
         });
         card.add_controller(click_controller);
 

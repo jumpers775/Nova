@@ -4,6 +4,8 @@ use super::components::{
 };
 use super::utils::ui;
 use crate::services::{LocalMusicProvider, ServiceManager};
+use crate::window::components::playback::Player;
+use crate::services::audio_player::AudioPlayer;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::Propagation;
@@ -109,6 +111,7 @@ pub struct NovaWindow {
     pub search_version: Cell<u32>,
     pub current_search_handle: RefCell<Option<glib::JoinHandle<()>>>,
     pub spinner_container: RefCell<Option<gtk::Box>>,
+    pub player: RefCell<Option<Player>>,
 }
 
 #[glib::object_subclass]
@@ -415,26 +418,33 @@ impl NovaWindow {
     }
 
     fn setup_playback_controls(&self) {
-        // Play button state
-        let is_playing = Rc::new(RefCell::new(false));
-        self.play_button.connect_clicked(move |button| {
-            let mut playing = is_playing.borrow_mut();
-            *playing = !*playing;
-            button.set_icon_name(if *playing {
-                "media-playback-pause-symbolic"
-            } else {
-                "media-playback-start-symbolic"
-            });
-        });
+        let audio_player = AudioPlayer::new().expect("Failed to create audio player");
+        let player = Player::new(
+            audio_player,
+            self.play_button.clone(),
+            self.mute_button.clone(),
+            self.volume_scale.clone(),
+            self.current_song.clone(),
+            self.current_song_artist.clone(),
+            self.current_album_art.clone(),
+            self.song_progress_bar.clone(),
+            self.current_time_label.clone(),
+            self.total_time_label.clone(),
+        );
 
-        // Previous and Next buttons
+        // Previous button
+        let player_clone = player.clone();
         self.prev_button.connect_clicked(move |_| {
-            println!("Previous button clicked");
+            player_clone.previous();
         });
 
+        // Next button
+        let player_clone = player.clone();
         self.next_button.connect_clicked(move |_| {
-            println!("Next button clicked");
+            player_clone.next();
         });
+
+        self.player.replace(Some(player));
 
         // Shuffle button
         self.shuffle_button.connect_clicked(move |button| {
