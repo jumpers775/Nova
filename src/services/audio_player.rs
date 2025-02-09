@@ -130,6 +130,8 @@ pub struct LocalAudioBackend {
     current_duration: Arc<RwLock<Option<Duration>>>,
     start_time: Arc<RwLock<Option<Instant>>>,
     elapsed_time: Arc<RwLock<Duration>>,
+    current_path: Arc<RwLock<Option<std::path::PathBuf>>>,
+    current_source: Arc<RwLock<Option<Box<dyn Source<Item = f32> + Send + Sync>>>>,
 }
 
 impl std::fmt::Debug for LocalAudioBackend {
@@ -160,6 +162,8 @@ impl LocalAudioBackend {
             current_duration: Arc::new(RwLock::new(None)),
             start_time: Arc::new(RwLock::new(None)),
             elapsed_time: Arc::new(RwLock::new(Duration::from_secs(0))),
+            current_path: Arc::new(RwLock::new(None)),
+            current_source: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -184,6 +188,9 @@ impl AudioBackend for LocalAudioBackend {
 
         // Get the file path from the track's source
         if let crate::services::models::PlaybackSource::Local { path, .. } = &track.source {
+            // Update the current_path so that seeking works correctly.
+            *self.current_path.write() = Some(std::path::PathBuf::from(path));
+
             // Open the audio file
             let file = File::open(path)?;
             let reader = BufReader::new(file);
@@ -194,11 +201,16 @@ impl AudioBackend for LocalAudioBackend {
             // Decode and append the audio to the sink
             let source = Decoder::new(reader)?;
 
-            // Store the duration
+            // Store the source for seeking and get duration
             let duration = source.total_duration();
             *self.current_duration.write() = duration;
+            *self.current_source.write() = Some(Box::new(source.convert_samples::<f32>()));
 
-            sink.append(source);
+            // Create a new decoder for playback
+            let file = File::open(path)?;
+            let reader = BufReader::new(file);
+            let playback_source = Decoder::new(reader)?.convert_samples::<f32>();
+            sink.append(playback_source);
 
             // Reset state and start playback
             *self.sink.write() = Some(sink);
@@ -220,6 +232,7 @@ impl AudioBackend for LocalAudioBackend {
         *self.current_duration.write() = None;
         *self.start_time.write() = None;
         *self.elapsed_time.write() = Duration::from_secs(0);
+        *self.current_source.write() = None;
     }
 
     fn pause(&self) {
@@ -258,8 +271,68 @@ impl AudioBackend for LocalAudioBackend {
         }
     }
 
-    fn set_position(&self, _position: Duration) {
-        // Note: rodio doesn't support seeking directly
+    fn set_position(&self, position: Duration) {
+        // Try seeking on current source first
+        if let Some(source) = self.current_source.write().as_mut() {
+            if let Ok(()) = source.try_seek(position) {
+                // Seek succeeded, update state
+                *self.elapsed_time.write() = position;
+                *self.start_time.write() = Some(std::time::Instant::now());
+
+                // Update playback to match seek position
+                if let Some(ref path) = *self.current_path.read() {
+                    if let Some(sink) = self.sink.write().take() {
+                        sink.stop();
+                    }
+
+                    let stream_handle = Self::get_stream_handle().expect("No audio output stream available");
+                    let file = std::fs::File::open(path).expect("Failed to open audio file");
+                    let reader = std::io::BufReader::new(file);
+                    let playback_source = rodio::Decoder::new(reader).expect("Failed to decode audio").convert_samples::<f32>();
+                    let sink = rodio::Sink::try_new(&stream_handle).expect("Failed to create audio sink");
+                    sink.append(playback_source);
+
+                    // Maintain play/pause state
+                    if !*self.is_playing.read() {
+                        sink.pause();
+                    }
+
+                    *self.sink.write() = Some(sink);
+                }
+                return;
+            }
+        }
+
+        // If seek failed, fall back to recreating decoder
+        if let Some(ref path) = *self.current_path.read() {
+            if let Some(sink) = self.sink.write().take() {
+                sink.stop();
+            }
+
+            let stream_handle = Self::get_stream_handle().expect("No audio output stream available");
+            let file = std::fs::File::open(path).expect("Failed to open audio file");
+            let reader = std::io::BufReader::new(file);
+            let decoder = rodio::Decoder::new(reader).expect("Failed to decode audio");
+            let source = decoder.skip_duration(position);
+            // Store source for future seeking
+            *self.current_source.write() = Some(Box::new(source.convert_samples::<f32>()));
+            
+            // Create new decoder for playback
+            let file = std::fs::File::open(path).expect("Failed to open audio file");
+            let reader = std::io::BufReader::new(file);
+            let playback_source = rodio::Decoder::new(reader).expect("Failed to decode audio").convert_samples::<f32>();
+            let sink = rodio::Sink::try_new(&stream_handle).expect("Failed to create audio sink");
+            sink.append(playback_source);
+            
+            // Maintain play/pause state
+            if !*self.is_playing.read() {
+                sink.pause();
+            }
+            
+            *self.sink.write() = Some(sink);
+            *self.elapsed_time.write() = position;
+            *self.start_time.write() = Some(std::time::Instant::now());
+        }
     }
 
     fn get_duration(&self) -> Option<Duration> {
