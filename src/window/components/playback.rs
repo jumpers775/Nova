@@ -175,6 +175,7 @@ impl Player {
     }
 
     fn start_progress_updates(&self) {
+        // Don't start new updates if we already have an active source
         if self.progress_update_source_id.borrow().is_some() {
             return;
         }
@@ -197,7 +198,11 @@ impl Player {
         }
 
         let source_id = glib::timeout_add_local(Duration::from_millis(100), move || {
+            // Check if we should stop updating
             if !*is_playing.borrow() {
+                if let Some(player) = weak_self.upgrade() {
+                    player.progress_update_source_id.replace(None);
+                }
                 return ControlFlow::Break;
             }
 
@@ -209,8 +214,10 @@ impl Player {
                     total_time_label.set_text(&Self::format_duration(duration));
 
                     if position >= duration {
-                        // Play next track automatically
                         if let Some(player) = weak_self.upgrade() {
+                            // Clear the source ID first
+                            player.progress_update_source_id.replace(None);
+                            // Then play next track
                             player.next();
                         }
                         return ControlFlow::Break;
@@ -224,20 +231,27 @@ impl Player {
     }
 
     fn stop_progress_updates(&self) {
-        if let Some(id) = self.progress_update_source_id.borrow_mut().take() {
-            id.remove();
-        }
+        // Just clear the source ID and let it clean itself up
+        self.progress_update_source_id.replace(None);
     }
 
     pub fn play_track(
         &self,
         track: &Track,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Stop any existing progress updates before starting new track
+        self.stop_progress_updates();
+        
         match self.audio_player.play(track) {
             Ok(_) => {
-                self.set_playing(true);
+                // Reset progress bar and time labels
+                self.progress_bar.set_value(0.0);
+                self.current_time_label.set_text("0:00");
+                self.total_time_label.set_text("0:00");
+                
                 self.update_now_playing(track);
-                self.start_progress_updates();
+                // Start progress updates after everything is set up
+                self.set_playing(true);
                 Ok(())
             }
             Err(e) => {
