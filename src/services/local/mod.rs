@@ -1,3 +1,4 @@
+mod audio;
 mod database;
 mod scanner;
 mod watcher;
@@ -32,6 +33,8 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use tokio::sync::{mpsc, RwLock};
+
+pub use audio::LocalAudioBackend;
 
 #[derive(Debug, Clone)]
 pub struct LocalMusicProvider {

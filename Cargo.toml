@@ -16,7 +16,9 @@ id3 = "1.16"
 dirs = "6.0"
 chrono = { version = "0.4", features = ["serde"] }
 symphonia = { version = "0.5", features = ["all-codecs"] }
-rodio = { version = "0.20", features = ["symphonia"] }
+gstreamer = { version = "0.22", features = ["v1_22"] }
+gstreamer-audio = "0.22"
+gstreamer-player = "0.22"
 gdk-pixbuf = "0.20"
 cairo-rs = "0.20"
 futures = "0.3"
