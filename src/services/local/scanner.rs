@@ -54,7 +54,7 @@ impl FileScanner {
         Self::is_music_file(path)
     }
 
-    pub fn process_file(path: &Path) -> Result<Track, Box<dyn Error + Send + Sync>> {
+    pub async fn process_file(path: &Path) -> Result<Track, Box<dyn Error + Send + Sync>> {
         println!("Processing file: {:?}", path);
 
         // Check if file exists first
@@ -69,11 +69,15 @@ impl FileScanner {
         let mut hasher = Sha1::new();
         hasher.update(path.to_str().unwrap_or_default().as_bytes());
         let id = format!("{:x}", hasher.finalize());
+        
+        tokio::task::yield_now().await;
 
         // Open the file
         let file = File::open(path)?;
         let file_metadata = file.metadata()?;
         let file_size = file_metadata.len();
+
+        tokio::task::yield_now().await;
 
         // Create a media source from the file
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -82,6 +86,8 @@ impl FileScanner {
         let hint = Hint::new();
         let format_opts: FormatOptions = Default::default();
         let metadata_opts: MetadataOptions = Default::default();
+
+        tokio::task::yield_now().await;
 
         // Probe the media source
         let mut probed =
@@ -100,6 +106,8 @@ impl FileScanner {
         let mut release_year = None;
         let mut genre = None;
         let mut duration = 0;
+
+        tokio::task::yield_now().await;
 
         // Get format metadata
         if let Some(metadata) = probed.format.metadata().current() {
@@ -170,8 +178,15 @@ impl FileScanner {
                         }
                     }
                 }
+                
+                // Yield periodically during tag processing
+                if tag.key.contains("TITLE") || tag.key.contains("ARTIST") {
+                    tokio::task::yield_now().await;
+                }
             }
         }
+
+        tokio::task::yield_now().await;
 
         // Calculate duration
         if let Some(track) = probed.format.tracks().first() {
@@ -181,6 +196,8 @@ impl FileScanner {
                 }
             }
         }
+
+        tokio::task::yield_now().await;
 
         // Extract artwork
         let mut artwork = Artwork {
@@ -195,6 +212,7 @@ impl FileScanner {
                 .find(|v| v.media_type.starts_with("image/"))
         }) {
             artwork.thumbnail = Some(visual_meta.data.to_vec());
+            tokio::task::yield_now().await;
         } else {
             // Look for cover art files in the same directory
             if let Some(parent) = path.parent() {
@@ -218,6 +236,11 @@ impl FileScanner {
                     if cover_path.exists() {
                         artwork.full_art = ArtworkSource::Local { path: cover_path };
                         break;
+                    }
+                    
+                    // Yield every few checks to prevent blocking
+                    if filename.contains("album") {
+                        tokio::task::yield_now().await;
                     }
                 }
             }

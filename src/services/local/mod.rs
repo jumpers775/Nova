@@ -31,13 +31,13 @@ use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct LocalMusicProvider {
     music_dir: PathBuf,
     db: Arc<RwLock<Database>>,
-    watcher: Arc<RwLock<FileWatcher>>,
+    event_sender: mpsc::Sender<FileEvent>,
 }
 
 impl LocalMusicProvider {
@@ -47,80 +47,37 @@ impl LocalMusicProvider {
             music_dir
         );
 
-        // Create database and watcher
-        let db = Database::new()?;
-        let watcher = FileWatcher::new(music_dir.clone())?;
+        // Create channels for file events
+        let (event_sender, mut event_receiver) = mpsc::channel(100);
 
-        let db = Arc::new(RwLock::new(db));
-        let watcher = Arc::new(RwLock::new(watcher));
+        // Create database and watcher
+        let db = Arc::new(RwLock::new(Database::new()?));
+        let _watcher = FileWatcher::new(music_dir.clone(), event_sender.clone())?;
 
         let provider = Self {
-            music_dir,
+            music_dir: music_dir.clone(),
             db: db.clone(),
-            watcher: watcher.clone(),
+            event_sender,
         };
 
-        // Start watching for changes
+        // Start background event processor
         let db_clone = db.clone();
-        let watcher_clone = watcher.clone();
-
-        glib::spawn_future_local(async move {
-            println!("Starting file watch loop");
-            loop {
-                let watcher_guard = watcher_clone.read().await;
-                if let Some(event) = watcher_guard.try_receive() {
-                    match &event {
-                        FileEvent::Created(path) | FileEvent::Modified(path) => {
-                            if FileScanner::is_music_file_public(path) {
-                                let mut db = db_clone.write().await;
-                                if let Ok(track) = FileScanner::process_file(path) {
-                                    if let Err(e) = db.insert_track(&track) {
-                                        eprintln!("Error inserting track: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                        FileEvent::Removed(path) => {
-                            if path.extension().map_or(false, |ext| {
-                                matches!(
-                                    ext.to_str().unwrap_or("").to_lowercase().as_str(),
-                                    "mp3" | "flac" | "m4a" | "ogg" | "wav"
-                                )
-                            }) {
-                                let mut db = db_clone.write().await;
-                                if let Err(e) = db.remove_track_by_path(path) {
-                                    eprintln!("Error removing track: {}", e);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                drop(watcher_guard);
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        tokio::spawn(async move {
+            println!("Starting file event processor");
+            while let Some(event) = event_receiver.recv().await {
+                Self::handle_file_event(&event, &db_clone).await;
             }
         });
 
-        // Initial scan of existing files
-        println!("Starting music directory scan...");
-        let files = FileScanner::scan_directory(&provider.music_dir)?;
-        println!("Found {} music files", files.len());
-
-        // Process files in batches
-        {
-            let db = provider.db.read().await;
-            for chunk in files.chunks(5) {
-                let mut tracks = Vec::with_capacity(chunk.len());
-                for file in chunk {
-                    if let Ok(track) = FileScanner::process_file(file) {
-                        tracks.push(track);
-                    }
-                }
-                if let Err(e) = db.batch_insert_tracks(&tracks) {
-                    eprintln!("Error inserting tracks batch: {}", e);
-                }
+        // Start initial scan in background
+        let db_clone = db.clone();
+        tokio::spawn(async move {
+            println!("Starting music directory scan...");
+            if let Ok(files) = FileScanner::scan_directory(&music_dir) {
+                println!("Found {} music files", files.len());
+                Self::process_files_batch(&files, &db_clone).await;
             }
-        }
+        });
 
         Ok(provider)
     }
@@ -128,34 +85,67 @@ impl LocalMusicProvider {
     pub async fn rescan_library(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("Rescanning music directory: {:?}", self.music_dir);
 
-        // Create new database
-        let mut new_db = Database::new()?;
-
         // Scan files
         let files = FileScanner::scan_directory(&self.music_dir)?;
         println!("Found {} music files", files.len());
 
-        // Process files in parallel batches
-        let tracks: Vec<_> = files
-            .par_iter()
-            .filter_map(|file| match FileScanner::process_file(file) {
-                Ok(track) => Some(track),
-                Err(e) => {
-                    eprintln!("Error processing file {:?}: {}", file, e);
-                    None
-                }
-            })
-            .collect();
-
-        // Batch insert tracks
-        new_db.batch_insert_tracks(&tracks)?;
-
-        // Replace old database with new one
-        let mut db = self.db.write().await;
-        *db = new_db;
-        println!("Successfully processed {} tracks", tracks.len());
+        // Process files in background
+        Self::process_files_batch(&files, &self.db).await;
+        println!("Rescan complete");
 
         Ok(())
+    }
+
+    async fn handle_file_event(event: &FileEvent, db: &Arc<RwLock<Database>>) {
+        match event {
+            FileEvent::Created(path) | FileEvent::Modified(path) => {
+                if FileScanner::is_music_file_public(path) {
+                    tokio::task::yield_now().await;
+                    if let Ok(track) = FileScanner::process_file(path).await {
+                        let mut db = db.write().await;
+                        if let Err(e) = db.insert_track(&track) {
+                            eprintln!("Error inserting track: {}", e);
+                        }
+                    }
+                }
+            }
+            FileEvent::Removed(path) => {
+                if path.extension().map_or(false, |ext| {
+                    matches!(
+                        ext.to_str().unwrap_or("").to_lowercase().as_str(),
+                        "mp3" | "flac" | "m4a" | "ogg" | "wav"
+                    )
+                }) {
+                    let mut db = db.write().await;
+                    if let Err(e) = db.remove_track_by_path(path) {
+                        eprintln!("Error removing track: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn process_files_batch(files: &[PathBuf], db: &Arc<RwLock<Database>>) {
+        for chunk in files.chunks(5) {
+            let mut tracks = Vec::with_capacity(chunk.len());
+            
+            for file in chunk {
+                tokio::task::yield_now().await;
+                if let Ok(track) = FileScanner::process_file(file).await {
+                    tracks.push(track);
+                }
+            }
+
+            if !tracks.is_empty() {
+                let mut db = db.write().await;
+                if let Err(e) = db.batch_insert_tracks(&tracks) {
+                    eprintln!("Error inserting tracks batch: {}", e);
+                }
+            }
+            
+            // Yield to allow other tasks to run
+            tokio::task::yield_now().await;
+        }
     }
 }
 

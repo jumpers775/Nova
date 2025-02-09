@@ -1,4 +1,3 @@
-use crossbeam_channel::{bounded, Sender};
 use gtk::glib;
 use notify::{
     event::{CreateKind, ModifyKind, RemoveKind},
@@ -7,6 +6,7 @@ use notify::{
 use parking_lot::RwLock;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub enum FileEvent {
@@ -18,49 +18,49 @@ pub enum FileEvent {
 #[derive(Debug)]
 pub struct FileWatcher {
     _watcher: RecommendedWatcher,
-    receiver: Arc<crossbeam_channel::Receiver<FileEvent>>,
+    event_sender: mpsc::Sender<FileEvent>,
 }
 
 impl FileWatcher {
-    pub fn new(path: PathBuf) -> notify::Result<Self> {
-        let (tx, rx) = bounded(100);
-        let tx = Arc::new(tx);
-
+    pub fn new(path: PathBuf, event_sender: mpsc::Sender<FileEvent>) -> notify::Result<Self> {
         println!("Initializing file watcher for path: {:?}", path);
 
-        let tx_clone = tx.clone();
+        let event_sender_clone = event_sender.clone();
         let mut watcher = notify::recommended_watcher(move |res: NotifyResult<Event>| {
             if let Ok(event) = res {
                 println!("Raw watcher event: {:?}", event);
 
-                for path in event.paths {
-                    let event = match event.kind {
-                        EventKind::Create(_) => {
-                            if path.exists() {
-                                Some(FileEvent::Created(path))
-                            } else {
-                                None
+                // Process events in background
+                let event_sender = event_sender_clone.clone();
+                let paths = event.paths.clone();
+                let kind = event.kind.clone();
+                
+                tokio::spawn(async move {
+                    for path in paths {
+                        let event = match kind {
+                            EventKind::Create(_) => {
+                                if path.exists() {
+                                    Some(FileEvent::Created(path))
+                                } else {
+                                    None
+                                }
                             }
-                        }
-                        EventKind::Modify(_) => {
-                            if path.exists() {
-                                Some(FileEvent::Modified(path))
-                            } else {
-                                Some(FileEvent::Removed(path))
+                            EventKind::Modify(_) => {
+                                if path.exists() {
+                                    Some(FileEvent::Modified(path))
+                                } else {
+                                    Some(FileEvent::Removed(path))
+                                }
                             }
-                        }
-                        EventKind::Remove(_) => Some(FileEvent::Removed(path)),
-                        _ => None,
-                    };
+                            EventKind::Remove(_) => Some(FileEvent::Removed(path)),
+                            _ => None,
+                        };
 
-                    if let Some(event) = event {
-                        // Schedule the event processing on the main thread
-                        let tx = tx_clone.clone();
-                        glib::idle_add_local_once(move || {
-                            let _ = tx.send(event);
-                        });
+                        if let Some(event) = event {
+                            let _ = event_sender.send(event).await;
+                        }
                     }
-                }
+                });
             } else if let Err(e) = res {
                 eprintln!("Watch error: {:?}", e);
             }
@@ -71,20 +71,10 @@ impl FileWatcher {
 
         Ok(Self {
             _watcher: watcher,
-            receiver: Arc::new(rx),
+            event_sender,
         })
     }
 
-    pub fn try_receive(&self) -> Option<FileEvent> {
-        self.receiver.try_recv().ok()
-    }
 }
 
-impl Clone for FileWatcher {
-    fn clone(&self) -> Self {
-        Self {
-            _watcher: notify::recommended_watcher(|_| {}).expect("Failed to create watcher"),
-            receiver: self.receiver.clone(),
-        }
-    }
-}
+// FileWatcher is not Clone anymore since it owns a unique event sender

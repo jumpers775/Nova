@@ -128,7 +128,7 @@ pub struct LocalAudioBackend {
     sink: Arc<RwLock<Option<Arc<Sink>>>>,
     is_playing: Arc<RwLock<bool>>,
     current_duration: Arc<RwLock<Option<Duration>>>,
-    start_time: Arc<RwLock<Option<Instant>>>,
+    position_cache: Arc<RwLock<(Instant, Duration)>>,
     current_track: Arc<RwLock<Option<Track>>>,
 }
 
@@ -137,7 +137,7 @@ impl std::fmt::Debug for LocalAudioBackend {
         f.debug_struct("LocalAudioBackend")
             .field("is_playing", &self.is_playing)
             .field("current_duration", &self.current_duration)
-            .field("start_time", &self.start_time)
+            .field("position_cache", &self.position_cache)
             .finish()
     }
 }
@@ -157,7 +157,7 @@ impl LocalAudioBackend {
             sink: Arc::new(RwLock::new(None)),
             is_playing: Arc::new(RwLock::new(false)),
             current_duration: Arc::new(RwLock::new(None)),
-            start_time: Arc::new(RwLock::new(None)),
+            position_cache: Arc::new(RwLock::new((Instant::now(), Duration::from_secs(0)))),
             current_track: Arc::new(RwLock::new(None)),
         })
     }
@@ -183,7 +183,7 @@ impl LocalAudioBackend {
                     // Create thread-safe clones of our state
                     let sink = self.sink.clone();
                     let is_playing = self.is_playing.clone();
-                    let start_time = self.start_time.clone();
+                    let position_cache = self.position_cache.clone();
 
                     // Pause current playback immediately while seeking
                     if let Some(old_sink) = &*self.sink.read() {
@@ -222,13 +222,9 @@ impl LocalAudioBackend {
                                         old_sink.stop();
                                     }
 
-                                    // Store new sink
+                                    // Store new sink and update position
                                     *sink.write() = Some(Arc::new(new_sink));
-                                    *start_time.write() = Some(
-                                        Instant::now()
-                                            .checked_sub(position)
-                                            .unwrap_or(Instant::now()),
-                                    );
+                                    *position_cache.write() = (Instant::now(), position);
 
                                     if was_playing {
                                         if let Some(new_sink) = &*sink.read() {
@@ -274,10 +270,13 @@ impl AudioBackend for LocalAudioBackend {
             sink.append(source);
             sink.set_volume(1.0);
 
+            // Initialize position tracking
+            let now = Instant::now();
+            *self.position_cache.write() = (now, Duration::from_secs(0));
+
             // Store the sink and start playback
             *self.sink.write() = Some(sink);
             *self.is_playing.write() = true;
-            *self.start_time.write() = Some(Instant::now());
             *self.current_track.write() = Some(track.clone());
 
             Ok(())
@@ -292,7 +291,7 @@ impl AudioBackend for LocalAudioBackend {
         }
         *self.is_playing.write() = false;
         *self.current_duration.write() = None;
-        *self.start_time.write() = None;
+        *self.position_cache.write() = (Instant::now(), Duration::from_secs(0));
         *self.current_track.write() = None;
     }
 
@@ -300,6 +299,13 @@ impl AudioBackend for LocalAudioBackend {
         if let Some(sink) = &*self.sink.read() {
             sink.pause();
             *self.is_playing.write() = false;
+            
+            // Store current position in cache
+            let mut cache = self.position_cache.write();
+            let now = Instant::now();
+            let prev_time = cache.0;
+            cache.1 += now.duration_since(prev_time);
+            cache.0 = now;
         }
     }
 
@@ -307,7 +313,10 @@ impl AudioBackend for LocalAudioBackend {
         if let Some(sink) = &*self.sink.read() {
             sink.play();
             *self.is_playing.write() = true;
-            *self.start_time.write() = Some(Instant::now());
+            
+            // Update cache timestamp without modifying position
+            let mut cache = self.position_cache.write();
+            cache.0 = Instant::now();
         }
     }
 
@@ -323,23 +332,29 @@ impl AudioBackend for LocalAudioBackend {
     }
 
     fn get_position(&self) -> Option<Duration> {
-        if !*self.is_playing.read() {
+        let is_playing = *self.is_playing.read();
+        if !is_playing {
             return None;
         }
 
-        // First check if we have a duration and if we're past it
-        if let Some(duration) = *self.current_duration.read() {
-            if let Some(start) = *self.start_time.read() {
-                let elapsed = start.elapsed();
+        let mut cache = self.position_cache.write();
+        let now = Instant::now();
+        
+        // Update cache every 100ms to reduce lock contention
+        if now.duration_since(cache.0) >= Duration::from_millis(100) {
+            if let Some(duration) = *self.current_duration.read() {
+                let elapsed = cache.1 + now.duration_since(cache.0);
                 if elapsed >= duration {
-                    // We've reached the end, stop playback
+                    drop(cache); // Release lock before stopping
                     self.stop();
                     return Some(duration);
                 }
+                *cache = (now, elapsed);
                 return Some(elapsed);
             }
         }
-        None
+        
+        Some(cache.1 + now.duration_since(cache.0))
     }
 
     fn set_position(&self, position: Duration) {
@@ -361,7 +376,7 @@ impl AudioBackend for LocalAudioBackend {
                     // Create thread-safe clones of our state
                     let sink = self.sink.clone();
                     let is_playing = self.is_playing.clone();
-                    let start_time = self.start_time.clone();
+                    let position_cache = self.position_cache.clone();
 
                     // Pause current playback immediately while seeking
                     if let Some(old_sink) = &*self.sink.read() {
@@ -403,13 +418,9 @@ impl AudioBackend for LocalAudioBackend {
                                         old_sink.stop();
                                     }
 
-                                    // Store new sink
+                                    // Store new sink and update position
                                     *sink.write() = Some(Arc::new(new_sink));
-                                    *start_time.write() = Some(
-                                        Instant::now()
-                                            .checked_sub(position)
-                                            .unwrap_or(Instant::now()),
-                                    );
+                                    *position_cache.write() = (Instant::now(), position);
 
                                     if was_playing {
                                         if let Some(new_sink) = &*sink.read() {

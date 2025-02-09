@@ -179,33 +179,38 @@ impl Player {
             return;
         }
 
-        let audio_player = self.audio_player.clone();
-        let progress_bar = self.progress_bar.clone();
-        let current_time_label = self.current_time_label.clone();
-        let total_time_label = self.total_time_label.clone();
-        let is_playing = self.is_playing.clone();
-        let weak_self = Rc::downgrade(&Rc::new(self.clone()));
+        let player = Rc::new(self.clone());
+        let weak_player = Rc::downgrade(&player);
 
-        let source_id = glib::timeout_add_local(Duration::from_millis(50), move || {
-            if !*is_playing.borrow() || !audio_player.is_playing() {
-                if let Some(player) = weak_self.upgrade() {
-                    if *is_playing.borrow() {
-                        player.next();
-                    }
+        let source_id = glib::timeout_add_local(Duration::from_millis(250), move || {
+            let player = match weak_player.upgrade() {
+                Some(player) => player,
+                None => return ControlFlow::Break,
+            };
+
+            if !*player.is_playing.borrow() || !player.audio_player.is_playing() {
+                if *player.is_playing.borrow() {
+                    player.next();
                 }
                 return ControlFlow::Break;
             }
 
             // Only update if scale is not being dragged
-            if !progress_bar.has_focus() {
-                if let Some(position) = audio_player.get_position() {
-                    if let Some(duration) = audio_player.get_duration() {
-                        let progress = (position.as_secs_f64() / duration.as_secs_f64() * 100.0).min(100.0);
-                        progress_bar.set_value(progress);
-                        current_time_label.set_text(&Self::format_duration(position));
-                        total_time_label.set_text(&Self::format_duration(duration));
+            if !player.progress_bar.has_focus() {
+                // Move expensive operations to background
+                let weak_player = weak_player.clone();
+                glib::idle_add_local_once(move || {
+                    if let Some(player) = weak_player.upgrade() {
+                        if let Some(position) = player.audio_player.get_position() {
+                            if let Some(duration) = player.audio_player.get_duration() {
+                                let progress = (position.as_secs_f64() / duration.as_secs_f64() * 100.0).min(100.0);
+                                player.progress_bar.set_value(progress);
+                                player.current_time_label.set_text(&Player::format_duration(position));
+                                player.total_time_label.set_text(&Player::format_duration(duration));
+                            }
+                        }
                     }
-                }
+                });
             }
             ControlFlow::Continue
         });
