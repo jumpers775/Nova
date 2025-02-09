@@ -129,6 +129,7 @@ pub struct LocalAudioBackend {
     is_playing: Arc<RwLock<bool>>,
     current_duration: Arc<RwLock<Option<Duration>>>,
     start_time: Arc<RwLock<Option<Instant>>>,
+    elapsed_time: Arc<RwLock<Duration>>,
 }
 
 impl std::fmt::Debug for LocalAudioBackend {
@@ -158,6 +159,7 @@ impl LocalAudioBackend {
             is_playing: Arc::new(RwLock::new(false)),
             current_duration: Arc::new(RwLock::new(None)),
             start_time: Arc::new(RwLock::new(None)),
+            elapsed_time: Arc::new(RwLock::new(Duration::from_secs(0))),
         })
     }
 
@@ -198,9 +200,10 @@ impl AudioBackend for LocalAudioBackend {
 
             sink.append(source);
 
-            // Store the sink and start playback
+            // Reset state and start playback
             *self.sink.write() = Some(sink);
             *self.is_playing.write() = true;
+            *self.elapsed_time.write() = Duration::from_secs(0);
             *self.start_time.write() = Some(Instant::now());
 
             Ok(())
@@ -216,12 +219,19 @@ impl AudioBackend for LocalAudioBackend {
         *self.is_playing.write() = false;
         *self.current_duration.write() = None;
         *self.start_time.write() = None;
+        *self.elapsed_time.write() = Duration::from_secs(0);
     }
 
     fn pause(&self) {
         if let Some(sink) = &*self.sink.read() {
             sink.pause();
             *self.is_playing.write() = false;
+            // Store current elapsed time
+            if let Some(start) = *self.start_time.read() {
+                let current = *self.elapsed_time.read() + start.elapsed();
+                *self.elapsed_time.write() = current;
+            }
+            *self.start_time.write() = None;
         }
     }
 
@@ -238,11 +248,14 @@ impl AudioBackend for LocalAudioBackend {
     }
 
     fn get_position(&self) -> Option<Duration> {
-        if !*self.is_playing.read() {
-            return None;
+        let elapsed = *self.elapsed_time.read();
+        if *self.is_playing.read() {
+            // Add current segment time to stored elapsed time
+            self.start_time.read().map(|start| elapsed + start.elapsed())
+        } else {
+            // Return stored elapsed time when paused
+            Some(elapsed)
         }
-
-        self.start_time.read().map(|start| start.elapsed())
     }
 
     fn set_position(&self, _position: Duration) {

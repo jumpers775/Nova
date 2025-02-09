@@ -135,18 +135,19 @@ impl Player {
 
         // Set up play button handler
         let audio_player_clone = audio_player.clone();
+        let player_clone = player.clone();
         play_button.connect_clicked(move |button| {
-            let mut playing = is_playing.borrow_mut();
+            let mut playing = player_clone.is_playing.borrow_mut();
             *playing = !*playing;
 
             if *playing {
                 button.set_icon_name("media-playback-pause-symbolic");
-                if let Some(track) = audio_player_clone.get_current_track() {
-                    audio_player_clone.resume();
-                }
+                audio_player_clone.resume();
+                player_clone.start_progress_updates();
             } else {
                 button.set_icon_name("media-playback-start-symbolic");
                 audio_player_clone.pause();
+                player_clone.stop_progress_updates();
             }
         });
 
@@ -185,6 +186,16 @@ impl Player {
         let is_playing = self.is_playing.clone();
         let weak_self = Rc::downgrade(&Rc::new(self.clone()));
 
+        // Update position immediately before starting the timer
+        if let Some(position) = audio_player.get_position() {
+            if let Some(duration) = audio_player.get_duration() {
+                let progress = position.as_secs_f64() / duration.as_secs_f64() * 100.0;
+                progress_bar.set_value(progress);
+                current_time_label.set_text(&Self::format_duration(position));
+                total_time_label.set_text(&Self::format_duration(duration));
+            }
+        }
+
         let source_id = glib::timeout_add_local(Duration::from_millis(100), move || {
             if !*is_playing.borrow() {
                 return ControlFlow::Break;
@@ -216,9 +227,6 @@ impl Player {
         if let Some(id) = self.progress_update_source_id.borrow_mut().take() {
             id.remove();
         }
-        self.progress_bar.set_value(0.0);
-        self.current_time_label.set_text("0:00");
-        self.total_time_label.set_text("0:00");
     }
 
     pub fn play_track(
