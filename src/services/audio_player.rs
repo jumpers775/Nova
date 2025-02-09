@@ -1,6 +1,6 @@
 use crate::services::models::{PlayableItem, Track};
 use async_trait::async_trait;
-use gtk::glib::{self, idle_add_local_once, ControlFlow};
+use gtk::glib;
 use parking_lot::RwLock;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::any::Any;
@@ -125,11 +125,10 @@ impl AudioPlayer {
 }
 
 pub struct LocalAudioBackend {
-    sink: Arc<RwLock<Option<Arc<Sink>>>>,
+    sink: Arc<RwLock<Option<Sink>>>,
     is_playing: Arc<RwLock<bool>>,
     current_duration: Arc<RwLock<Option<Duration>>>,
-    position_cache: Arc<RwLock<(Instant, Duration)>>,
-    current_track: Arc<RwLock<Option<Track>>>,
+    start_time: Arc<RwLock<Option<Instant>>>,
 }
 
 impl std::fmt::Debug for LocalAudioBackend {
@@ -137,7 +136,7 @@ impl std::fmt::Debug for LocalAudioBackend {
         f.debug_struct("LocalAudioBackend")
             .field("is_playing", &self.is_playing)
             .field("current_duration", &self.current_duration)
-            .field("position_cache", &self.position_cache)
+            .field("start_time", &self.start_time)
             .finish()
     }
 }
@@ -145,20 +144,20 @@ impl std::fmt::Debug for LocalAudioBackend {
 impl LocalAudioBackend {
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Initialize stream on the main thread
-        idle_add_local_once(|| {
+        glib::idle_add_local(|| {
             if AUDIO_STREAM.with(|s| s.borrow().is_none()) {
                 if let Ok((stream, handle)) = OutputStream::try_default() {
                     AUDIO_STREAM.with(|s| *s.borrow_mut() = Some((stream, handle)));
                 }
             }
+            glib::ControlFlow::Break
         });
 
         Ok(Self {
             sink: Arc::new(RwLock::new(None)),
             is_playing: Arc::new(RwLock::new(false)),
             current_duration: Arc::new(RwLock::new(None)),
-            position_cache: Arc::new(RwLock::new((Instant::now(), Duration::from_secs(0)))),
-            current_track: Arc::new(RwLock::new(None)),
+            start_time: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -169,75 +168,6 @@ impl LocalAudioBackend {
     fn set_volume(&self, vol: f64) {
         if let Some(sink) = &*self.sink.read() {
             sink.set_volume(vol as f32);
-        }
-    }
-
-    fn set_position(&self, position: Duration) {
-        if let Some(current_track) = &*self.current_track.read() {
-            if let crate::services::models::PlaybackSource::Local { path, .. } = &current_track.source {
-                if let Some(stream_handle) = Self::get_stream_handle() {
-                    let path = path.clone();
-                    let current_volume = self.sink.read().as_ref().and_then(|s| Some(s.as_ref())).map(|s| s.volume()).unwrap_or(1.0);
-                    let was_playing = *self.is_playing.read();
-
-                    // Create thread-safe clones of our state
-                    let sink = self.sink.clone();
-                    let is_playing = self.is_playing.clone();
-                    let position_cache = self.position_cache.clone();
-
-                    // Pause current playback immediately while seeking
-                    if let Some(old_sink) = &*self.sink.read() {
-                        old_sink.pause();
-                    }
-
-                    // Schedule the seek operation on the main thread
-                    glib::idle_add_local_once(move || {
-                        if let Ok(file) = File::open(path) {
-                            let reader = BufReader::new(file);
-                            if let Ok(mut source) = Decoder::new(reader) {
-                                let sample_rate = source.sample_rate();
-                                let channels = source.channels() as usize;
-                                let samples_to_skip = (position.as_secs_f64() * sample_rate as f64 * channels as f64) as usize;
-
-                                // Skip samples in larger chunks
-                                let mut skipped = 0usize;
-                                let chunk_size = 1024 * channels;
-                                while skipped < samples_to_skip {
-                                    let to_skip = std::cmp::min(chunk_size, samples_to_skip - skipped);
-                                    for _ in 0..to_skip {
-                                        if source.next().is_none() {
-                                            return;
-                                        }
-                                    }
-                                    skipped += to_skip;
-                                }
-
-                                // Once we've skipped to position, create new sink
-                                if let Ok(new_sink) = Sink::try_new(&stream_handle) {
-                                    new_sink.set_volume(current_volume);
-                                    new_sink.append(source);
-
-                                    // Stop and remove old sink
-                                    if let Some(old_sink) = &*sink.read() {
-                                        old_sink.stop();
-                                    }
-
-                                    // Store new sink and update position
-                                    *sink.write() = Some(Arc::new(new_sink));
-                                    *position_cache.write() = (Instant::now(), position);
-
-                                    if was_playing {
-                                        if let Some(new_sink) = &*sink.read() {
-                                            new_sink.play();
-                                            *is_playing.write() = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-            }
         }
     }
 }
@@ -257,7 +187,7 @@ impl AudioBackend for LocalAudioBackend {
             let reader = BufReader::new(file);
 
             // Create a new sink
-            let sink = Arc::new(Sink::try_new(&stream_handle)?);
+            let sink = Sink::try_new(&stream_handle)?;
 
             // Decode and append the audio to the sink
             let source = Decoder::new(reader)?;
@@ -266,18 +196,12 @@ impl AudioBackend for LocalAudioBackend {
             let duration = source.total_duration();
             *self.current_duration.write() = duration;
 
-            // Configure sink to not loop
             sink.append(source);
-            sink.set_volume(1.0);
-
-            // Initialize position tracking
-            let now = Instant::now();
-            *self.position_cache.write() = (now, Duration::from_secs(0));
 
             // Store the sink and start playback
             *self.sink.write() = Some(sink);
             *self.is_playing.write() = true;
-            *self.current_track.write() = Some(track.clone());
+            *self.start_time.write() = Some(Instant::now());
 
             Ok(())
         } else {
@@ -286,26 +210,18 @@ impl AudioBackend for LocalAudioBackend {
     }
 
     fn stop(&self) {
-        if let Some(sink) = &*self.sink.read() {
+        if let Some(sink) = self.sink.write().take() {
             sink.stop();
         }
         *self.is_playing.write() = false;
         *self.current_duration.write() = None;
-        *self.position_cache.write() = (Instant::now(), Duration::from_secs(0));
-        *self.current_track.write() = None;
+        *self.start_time.write() = None;
     }
 
     fn pause(&self) {
         if let Some(sink) = &*self.sink.read() {
             sink.pause();
             *self.is_playing.write() = false;
-            
-            // Store current position in cache
-            let mut cache = self.position_cache.write();
-            let now = Instant::now();
-            let prev_time = cache.0;
-            cache.1 += now.duration_since(prev_time);
-            cache.0 = now;
         }
     }
 
@@ -313,128 +229,24 @@ impl AudioBackend for LocalAudioBackend {
         if let Some(sink) = &*self.sink.read() {
             sink.play();
             *self.is_playing.write() = true;
-            
-            // Update cache timestamp without modifying position
-            let mut cache = self.position_cache.write();
-            cache.0 = Instant::now();
+            *self.start_time.write() = Some(Instant::now());
         }
     }
 
     fn is_playing(&self) -> bool {
-        if let Some(sink) = &*self.sink.read() {
-            // Check if the sink is actually empty (reached end of track)
-            if sink.empty() {
-                *self.is_playing.write() = false;
-                return false;
-            }
-        }
         *self.is_playing.read()
     }
 
     fn get_position(&self) -> Option<Duration> {
-        let is_playing = *self.is_playing.read();
-        if !is_playing {
+        if !*self.is_playing.read() {
             return None;
         }
 
-        let mut cache = self.position_cache.write();
-        let now = Instant::now();
-        
-        // Update cache every 100ms to reduce lock contention
-        if now.duration_since(cache.0) >= Duration::from_millis(100) {
-            if let Some(duration) = *self.current_duration.read() {
-                let elapsed = cache.1 + now.duration_since(cache.0);
-                if elapsed >= duration {
-                    drop(cache); // Release lock before stopping
-                    self.stop();
-                    return Some(duration);
-                }
-                *cache = (now, elapsed);
-                return Some(elapsed);
-            }
-        }
-        
-        Some(cache.1 + now.duration_since(cache.0))
+        self.start_time.read().map(|start| start.elapsed())
     }
 
-    fn set_position(&self, position: Duration) {
-        if let Some(current_track) = &*self.current_track.read() {
-            if let crate::services::models::PlaybackSource::Local { path, .. } =
-                &current_track.source
-            {
-                if let Some(stream_handle) = Self::get_stream_handle() {
-                    let path = path.clone();
-                    let current_volume = self
-                        .sink
-                        .read()
-                        .as_ref()
-                        .and_then(|s| Some(s.as_ref()))
-                        .map(|s| s.volume())
-                        .unwrap_or(1.0);
-                    let was_playing = *self.is_playing.read();
-
-                    // Create thread-safe clones of our state
-                    let sink = self.sink.clone();
-                    let is_playing = self.is_playing.clone();
-                    let position_cache = self.position_cache.clone();
-
-                    // Pause current playback immediately while seeking
-                    if let Some(old_sink) = &*self.sink.read() {
-                        old_sink.pause();
-                    }
-
-                    // Schedule the seek operation on the main thread
-                    glib::idle_add_local_once(move || {
-                        if let Ok(file) = File::open(path) {
-                            let reader = BufReader::new(file);
-                            if let Ok(mut source) = Decoder::new(reader) {
-                                let sample_rate = source.sample_rate();
-                                let channels = source.channels() as usize;
-                                let samples_to_skip =
-                                    (position.as_secs_f64() * sample_rate as f64 * channels as f64)
-                                        as usize;
-
-                                // Skip samples in larger chunks
-                                let mut skipped = 0usize;
-                                let chunk_size = 1024 * channels;
-                                while skipped < samples_to_skip {
-                                    let to_skip =
-                                        std::cmp::min(chunk_size, samples_to_skip - skipped);
-                                    for _ in 0..to_skip {
-                                        if source.next().is_none() {
-                                            return;
-                                        }
-                                    }
-                                    skipped += to_skip;
-                                }
-
-                                // Once we've skipped to position, create new sink
-                                if let Ok(new_sink) = Sink::try_new(&stream_handle) {
-                                    new_sink.set_volume(current_volume);
-                                    new_sink.append(source);
-
-                                    // Stop and remove old sink
-                                    if let Some(old_sink) = &*sink.read() {
-                                        old_sink.stop();
-                                    }
-
-                                    // Store new sink and update position
-                                    *sink.write() = Some(Arc::new(new_sink));
-                                    *position_cache.write() = (Instant::now(), position);
-
-                                    if was_playing {
-                                        if let Some(new_sink) = &*sink.read() {
-                                            new_sink.play();
-                                            *is_playing.write() = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-            }
-        }
+    fn set_position(&self, _position: Duration) {
+        // Note: rodio doesn't support seeking directly
     }
 
     fn get_duration(&self) -> Option<Duration> {

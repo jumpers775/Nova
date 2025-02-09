@@ -162,16 +162,15 @@ impl Player {
         // Initialize progress bar
         progress_bar.set_draw_value(false);
         progress_bar.set_range(0.0, 100.0);
-        player.connect_progress_bar();
 
         player
     }
 
     fn format_duration(duration: Duration) -> String {
-        let total_secs = duration.as_secs();
-        let mins = total_secs / 60;
-        let secs = total_secs % 60;
-        format!("{}:{:02}", mins, secs)
+        let total_seconds = duration.as_secs();
+        let minutes = total_seconds / 60;
+        let seconds = total_seconds % 60;
+        format!("{}:{:02}", minutes, seconds)
     }
 
     fn start_progress_updates(&self) {
@@ -179,38 +178,33 @@ impl Player {
             return;
         }
 
-        let player = Rc::new(self.clone());
-        let weak_player = Rc::downgrade(&player);
+        let audio_player = self.audio_player.clone();
+        let progress_bar = self.progress_bar.clone();
+        let current_time_label = self.current_time_label.clone();
+        let total_time_label = self.total_time_label.clone();
+        let is_playing = self.is_playing.clone();
+        let weak_self = Rc::downgrade(&Rc::new(self.clone()));
 
-        let source_id = glib::timeout_add_local(Duration::from_millis(250), move || {
-            let player = match weak_player.upgrade() {
-                Some(player) => player,
-                None => return ControlFlow::Break,
-            };
-
-            if !*player.is_playing.borrow() || !player.audio_player.is_playing() {
-                if *player.is_playing.borrow() {
-                    player.next();
-                }
+        let source_id = glib::timeout_add_local(Duration::from_millis(100), move || {
+            if !*is_playing.borrow() {
                 return ControlFlow::Break;
             }
 
-            // Only update if scale is not being dragged
-            if !player.progress_bar.has_focus() {
-                // Move expensive operations to background
-                let weak_player = weak_player.clone();
-                glib::idle_add_local_once(move || {
-                    if let Some(player) = weak_player.upgrade() {
-                        if let Some(position) = player.audio_player.get_position() {
-                            if let Some(duration) = player.audio_player.get_duration() {
-                                let progress = (position.as_secs_f64() / duration.as_secs_f64() * 100.0).min(100.0);
-                                player.progress_bar.set_value(progress);
-                                player.current_time_label.set_text(&Player::format_duration(position));
-                                player.total_time_label.set_text(&Player::format_duration(duration));
-                            }
+            if let Some(position) = audio_player.get_position() {
+                if let Some(duration) = audio_player.get_duration() {
+                    let progress = position.as_secs_f64() / duration.as_secs_f64() * 100.0;
+                    progress_bar.set_value(progress);
+                    current_time_label.set_text(&Self::format_duration(position));
+                    total_time_label.set_text(&Self::format_duration(duration));
+
+                    if position >= duration {
+                        // Play next track automatically
+                        if let Some(player) = weak_self.upgrade() {
+                            player.next();
                         }
+                        return ControlFlow::Break;
                     }
-                });
+                }
             }
             ControlFlow::Continue
         });
@@ -304,33 +298,5 @@ impl Player {
                 println!("Error playing previous track: {}", e);
             }
         }
-    }
-
-    // Handle progress bar seeking
-    pub fn connect_progress_bar(&self) {
-        let progress_bar = self.progress_bar.clone();
-        let audio_player = self.audio_player.clone();
-        let is_dragging = Rc::new(RefCell::new(false));
-        let is_dragging_clone = is_dragging.clone();
-        
-        // Handle dragging state
-        progress_bar.connect_change_value(move |scale, scroll_type, value| {
-            if scroll_type == gtk::ScrollType::Jump {
-                *is_dragging_clone.borrow_mut() = true;
-            }
-            scale.set_value(value);
-            glib::Propagation::Stop
-        });
-
-        // Handle seek on release
-        progress_bar.connect_value_changed(move |scale| {
-            if *is_dragging.borrow() {
-                if let Some(duration) = audio_player.get_duration() {
-                    let position = Duration::from_secs_f64(scale.value() / 100.0 * duration.as_secs_f64());
-                    audio_player.set_position(position);
-                }
-                *is_dragging.borrow_mut() = false;
-            }
-        });
     }
 }
